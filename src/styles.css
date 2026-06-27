@@ -104,4 +104,12 @@ input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer;
 .nav-pop-btn { margin-top: 9px; width: 100%; border: none; background: var(--accent); color: #fff; border-radius: 8px; padding: 7px; font-size: 12px; font-weight: 600; cursor: pointer; }
 .nav-pop-btn:hover { filter: brightness(1.08); }
 
+/* Route waypoint delete popup */
+.route-pop-wrap .leaflet-popup-content { margin: 0; }
+.route-pop-wrap .leaflet-popup-content-wrapper { padding: 0; border-radius: 50%; background: transparent; box-shadow: none; }
+.route-pop-wrap .leaflet-popup-tip { display: none; }
+.route-pop { display: flex; }
+.route-pop-del { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 2px solid #fff; border-radius: 50%; background: var(--danger, #dc2626); color: #fff; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+.route-pop-del:hover { filter: brightness(1.1); }
+
 .leaflet-control-attribution { font-size: 10px; }

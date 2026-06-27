@@ -564,8 +564,16 @@ function initMap() {
     pts.forEach(function (p, i) {
       var role = i === 0 ? "start" : i === pts.length - 1 ? "last" : "mid";
       var mk = L.marker(p, { icon: routeMarkerIcon(role), draggable: true });
+      mk._routeIdx = i;
+      mk.bindPopup(
+        '<div class="route-pop"><button class="route-pop-del" title="Delete point" aria-label="Delete point">' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>' +
+          "</button></div>",
+        { className: "route-pop-wrap", closeButton: false, offset: [0, -4], autoPan: false }
+      );
       mk.on("dragstart", function () {
         mk._origin = mk.getLatLng();
+        mk.closePopup();
       });
       mk.on("drag", function () {
         state.route.points[i] = mk.getLatLng();
@@ -920,7 +928,22 @@ function initMap() {
   map.on("popupopen", function (e) {
     var node = e.popup._contentNode,
       src = e.popup._source;
-    if (!node || !src || !src._nav) return;
+    if (!node || !src) return;
+
+    // Route waypoint popup: delete the point and reconnect its neighbours.
+    if (src._routeIdx != null) {
+      var del = node.querySelector(".route-pop-del");
+      if (del)
+        del.onclick = function () {
+          state.route.points.splice(src._routeIdx, 1);
+          map.closePopup();
+          rebuildRouteMarkers();
+          redrawRouteGeometry();
+        };
+      return;
+    }
+
+    if (!src._nav) return;
     var btn = node.querySelector(".nav-pop-btn");
     if (!btn) return;
     btn.onclick = function () {
