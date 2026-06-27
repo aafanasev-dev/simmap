@@ -131,6 +131,15 @@ export default function RadiusRouteMap() {
               Tick an airport size to load airports (source: OurAirports). Click one for runways
               &amp; frequencies.
             </div>
+            <div className="layer-group-label" style={{ marginTop: 12 }}>
+              Waypoints
+            </div>
+            <label className="nav-toggle">
+              <input type="checkbox" id="wpt-enable" /> <span>5-letter fixes</span>
+            </label>
+            <div className="note" id="wpt-status" style={{ marginTop: 8 }}>
+              Tick to load worldwide RNAV waypoints (X-Plane GPL data, cycle 2012).
+            </div>
           </div>
 
           {/* RADIUS MODE */}
@@ -223,6 +232,10 @@ function initMap() {
   var MIN_APT_ZOOM = 7,
     MAX_APT = 400;
   var APT_TYPES = { small_airport: 1, medium_airport: 2, large_airport: 3 };
+  var WPT_URL =
+    "https://raw.githubusercontent.com/mcantsin/x-plane-navdata/master/earth_fix.dat";
+  var MIN_WPT_ZOOM = 7,
+    MAX_WPT = 400;
 
   function toRad(d) {
     return (d * Math.PI) / 180;
@@ -411,6 +424,8 @@ function initMap() {
       ? "large"
       : null;
   }
+  var wptData = [],
+    wptState = { enabled: false, loaded: false, loading: false };
   // True while an airport popup is open, so the moveend re-render (triggered by the
   // popup's own autoPan) doesn't clearLayers() the marker and close the popup.
   var aptPopupOpen = false;
@@ -433,6 +448,7 @@ function initMap() {
   });
   var navaidLayer = L.layerGroup();
   var airportLayer = L.layerGroup();
+  var waypointLayer = L.layerGroup();
   radiusMarker.on("drag", function (e) {
     state.radius.center = e.target.getLatLng();
     renderRadius();
@@ -458,6 +474,7 @@ function initMap() {
     $navStatus = document.getElementById("nav-status");
   var $routePoints = document.getElementById("route-points");
   var $aptStatus = document.getElementById("apt-status");
+  var $wptStatus = document.getElementById("wpt-status");
 
   function row(k, v) {
     return '<div class="stat-line"><span class="k">' + k + '</span><span class="v">' + v + "</span></div>";
@@ -628,9 +645,9 @@ function initMap() {
     var rows = "";
     for (var i = 0; i < pts.length; i++) {
       var nf = info[i],
-        isApt = nf && nf.cat === "APT",
+        isIdOnly = nf && (nf.cat === "APT" || nf.cat === "FIX"),
         label = i === 0 ? "Start" : i === pts.length - 1 ? "End" : String(i),
-        typeCell = isApt
+        typeCell = isIdOnly
           ? escapeHtml(nf.ident)
           : nf
           ? '<span class="rp-tag rp-' +
@@ -640,7 +657,7 @@ function initMap() {
             "</span> " +
             escapeHtml(nf.ident)
           : '<span class="rp-tag rp-wpt">WPT</span>',
-        freqCell = nf && !isApt ? escapeHtml(fmtNavFreq(nf.freq)) : "—";
+        freqCell = nf && !isIdOnly ? escapeHtml(fmtNavFreq(nf.freq)) : "—";
       rows +=
         '<tr draggable="true" data-idx="' +
         i +
@@ -1154,6 +1171,126 @@ function initMap() {
     }
   }
 
+  // ---- Waypoints (5-letter RNAV fixes) ----
+  function setWptStatus(msg) {
+    $wptStatus.textContent = msg;
+  }
+
+  function buildWaypointPopup(w) {
+    return (
+      '<div class="wpt-pop"><div class="wpt-pop-id">' +
+      escapeHtml(w.ident) +
+      "</div>" +
+      '<div class="wpt-pop-name">' +
+      fmtCoord({ lat: w.lat, lng: w.lng }) +
+      "</div>" +
+      '<button class="wpt-pop-btn">＋ Add to route</button></div>'
+    );
+  }
+
+  function makeWaypointMarker(w) {
+    var icon = L.divIcon({
+      className: "",
+      iconSize: [12, 12],
+      iconAnchor: [6, 6],
+      html:
+        '<div class="waypoint"><span class="wpt-sym"></span><span class="wpt-id">' +
+        escapeHtml(w.ident) +
+        "</span></div>",
+    });
+    var mk = L.marker([w.lat, w.lng], { icon: icon });
+    mk._wpt = w;
+    mk.bindPopup(buildWaypointPopup(w));
+    return mk;
+  }
+
+  function renderWaypoints() {
+    waypointLayer.clearLayers();
+    if (!wptState.enabled) return;
+    if (wptState.loading) {
+      setWptStatus("Loading waypoint database…");
+      return;
+    }
+    if (!wptState.loaded) return;
+    if (map.getZoom() < MIN_WPT_ZOOM) {
+      setWptStatus("Zoom in to show waypoints (≥ z" + MIN_WPT_ZOOM + ")");
+      return;
+    }
+    var b = map.getBounds(),
+      shown = 0,
+      total = 0;
+    for (var i = 0; i < wptData.length; i++) {
+      var w = wptData[i];
+      if (!b.contains([w.lat, w.lng])) continue;
+      total++;
+      if (shown >= MAX_WPT) continue;
+      waypointLayer.addLayer(makeWaypointMarker(w));
+      shown++;
+    }
+    setWptStatus(
+      total > MAX_WPT
+        ? "Showing " + shown + " of " + total + " in view — zoom in for the rest"
+        : shown
+        ? "Showing " + shown + " waypoint" + (shown === 1 ? "" : "s")
+        : "No waypoints in view"
+    );
+  }
+
+  function ingestWaypoints(text) {
+    wptData = [];
+    var lines = text.split("\n");
+    for (var i = 0; i < lines.length; i++) {
+      var t = lines[i].trim().split(/\s+/);
+      if (t.length < 3) continue;
+      var id = t[2];
+      if (!/^[A-Z]{5}$/.test(id) || id === "ZZZZZ") continue;
+      var lat = parseFloat(t[0]),
+        lng = parseFloat(t[1]);
+      if (isNaN(lat) || isNaN(lng)) continue;
+      wptData.push({ ident: id, lat: lat, lng: lng });
+    }
+    wptState.loaded = true;
+    wptState.loading = false;
+    renderWaypoints();
+  }
+
+  function loadWaypoints() {
+    if (wptState.loading || wptState.loaded) {
+      renderWaypoints();
+      return;
+    }
+    wptState.loading = true;
+    setWptStatus("Loading waypoint database…");
+    var done = false;
+    var guard = setTimeout(function () {
+      if (!done && !wptState.loaded) {
+        wptState.loading = false;
+        setWptStatus("Waypoint data blocked or slow — the sandbox may be preventing the download.");
+      }
+    }, 30000);
+    function fail() {
+      done = true;
+      clearTimeout(guard);
+      wptState.loading = false;
+      setWptStatus("Could not load waypoint data (blocked or offline).");
+    }
+    try {
+      fetch(WPT_URL)
+        .then(function (r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.text();
+        })
+        .then(function (text) {
+          done = true;
+          clearTimeout(guard);
+          ingestWaypoints(text);
+        })
+        .catch(fail);
+    } catch (e) {
+      fail();
+    }
+  }
+
   function render() {
     if (state.mode === "radius") renderRadius();
     else redrawRouteGeometry();
@@ -1191,6 +1328,7 @@ function initMap() {
     }
     if (navAnyOn()) map.addLayer(navaidLayer); // keep navaids above on top
     if (aptAnyOn()) map.addLayer(airportLayer); // and airports on top
+    if (wptState.enabled) map.addLayer(waypointLayer); // and waypoints on top
   }
 
   function applySpeedChange() {
@@ -1273,6 +1411,17 @@ function initMap() {
     } else {
       map.removeLayer(airportLayer);
       setAptStatus("Airports hidden.");
+    }
+  }
+  function setWptEnabled(on) {
+    wptState.enabled = on;
+    if (on) {
+      map.addLayer(waypointLayer);
+      if (!wptState.loaded && !wptState.loading) loadWaypoints();
+      else renderWaypoints();
+    } else {
+      map.removeLayer(waypointLayer);
+      setWptStatus("Waypoints hidden.");
     }
   }
   function onReset() {
@@ -1371,6 +1520,9 @@ function initMap() {
       setAptGroup(cb.getAttribute("data-grp"), cb.checked);
     });
   });
+  document.getElementById("wpt-enable").addEventListener("change", function () {
+    setWptEnabled(this.checked);
+  });
 
   // Add-to-route from navaid popup
   map.on("popupopen", function (e) {
@@ -1407,6 +1559,29 @@ function initMap() {
           if (added) {
             map.closePopup();
             toast("Added " + a.ident + " to route");
+          }
+        };
+      return;
+    }
+
+    // Waypoint popup: add the 5-letter fix as a route waypoint.
+    if (src._wpt) {
+      var wBtn = node.querySelector(".wpt-pop-btn");
+      if (wBtn)
+        wBtn.onclick = function () {
+          if (state.mode !== "route") {
+            toast("Switch to Route mode to add points");
+            return;
+          }
+          var w = src._wpt;
+          var added = tryAddRoutePoint(L.latLng(w.lat, w.lng), {
+            kind: "waypoint",
+            cat: "FIX",
+            ident: w.ident,
+          });
+          if (added) {
+            map.closePopup();
+            toast("Added " + w.ident + " to route");
           }
         };
       return;
@@ -1450,6 +1625,7 @@ function initMap() {
     if (navAnyOn()) renderNavaids();
     // Skip while an airport popup is open: re-rendering would clearLayers() and close it.
     if (aptAnyOn() && !aptPopupOpen) renderAirports();
+    if (wptState.enabled) renderWaypoints();
   });
   map.on("popupclose", function (e) {
     if (e.popup && e.popup._source && e.popup._source._apt) {
