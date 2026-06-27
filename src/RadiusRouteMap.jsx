@@ -151,6 +151,11 @@ export default function RadiusRouteMap() {
               shows the range left. Drag a point to adjust — a move that exceeds the budget is{" "}
               <b>cancelled</b>. Beacons can be added via their popup.
             </div>
+
+            <div className="field-label" style={{ marginTop: 16 }}>
+              Route points
+            </div>
+            <div id="route-points"></div>
           </div>
 
           <button id="reset" style={{ marginTop: 4 }}>
@@ -320,8 +325,10 @@ function initMap() {
     minZoom: 2,
     maxZoom: 19,
   });
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "&copy; OpenStreetMap contributors",
+  L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+    attribution:
+      "Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap (CC-BY-SA)",
+    maxNativeZoom: 17,
     maxZoom: 19,
   }).addTo(map);
   map.attributionControl.setPosition("bottomleft");
@@ -350,7 +357,7 @@ function initMap() {
     speedMS: 0,
     speedUnit: "kt",
     radius: { center: L.latLng(DEFAULT_CENTER[0], DEFAULT_CENTER[1]), radiusM: 100000 },
-    route: { budgetM: 100000, points: [] },
+    route: { budgetM: 100000, points: [], info: [] },
   };
   var navData = [],
     navState = {
@@ -400,6 +407,7 @@ function initMap() {
     segRoute = document.getElementById("mode-route");
   var presetWrap = document.getElementById("presets"),
     $navStatus = document.getElementById("nav-status");
+  var $routePoints = document.getElementById("route-points");
 
   function row(k, v) {
     return '<div class="stat-line"><span class="k">' + k + '</span><span class="v">' + v + "</span></div>";
@@ -556,6 +564,56 @@ function initMap() {
       (sp > 0 ? row("Time used", fmtTime(used / sp)) : "") +
       row("Legs", Math.max(0, pts.length - 1)) +
       row("Start", pts.length ? fmtCoord(pts[0]) : "—");
+
+    renderRoutePointsTable();
+  }
+
+  function renderRoutePointsTable() {
+    var pts = state.route.points,
+      info = state.route.info;
+    if (!pts.length) {
+      $routePoints.innerHTML = '<div class="rp-empty">No points yet — click the map to start.</div>';
+      return;
+    }
+    var rows = "";
+    for (var i = 0; i < pts.length; i++) {
+      var nf = info[i],
+        label = i === 0 ? "Start" : i === pts.length - 1 ? "End" : String(i),
+        typeCell = nf
+          ? '<span class="rp-tag rp-' +
+            nf.cat.toLowerCase() +
+            '">' +
+            escapeHtml(nf.cat) +
+            "</span> " +
+            escapeHtml(nf.ident)
+          : '<span class="rp-tag rp-wpt">WPT</span>',
+        freqCell = nf ? escapeHtml(fmtNavFreq(nf.freq)) : "—";
+      rows +=
+        '<tr><td class="rp-n">' +
+        label +
+        '</td><td class="rp-type">' +
+        typeCell +
+        '</td><td class="rp-freq">' +
+        freqCell +
+        '</td><td class="rp-coord">' +
+        fmtCoord(pts[i]) +
+        '</td><td class="rp-act"><button class="rp-del" data-idx="' +
+        i +
+        '" title="Delete point" aria-label="Delete point">✕</button></td></tr>';
+    }
+    $routePoints.innerHTML =
+      '<table class="rp-table"><thead><tr><th>#</th><th>Type</th><th>Freq</th><th>Coordinates</th><th></th></tr></thead><tbody>' +
+      rows +
+      "</tbody></table>";
+  }
+
+  function deleteRoutePoint(i) {
+    if (i < 0 || i >= state.route.points.length) return;
+    state.route.points.splice(i, 1);
+    state.route.info.splice(i, 1);
+    map.closePopup();
+    rebuildRouteMarkers();
+    redrawRouteGeometry();
   }
 
   function rebuildRouteMarkers() {
@@ -585,6 +643,9 @@ function initMap() {
           state.route.points[i] = mk._origin;
           mk.setLatLng(mk._origin);
           toast("Move cancelled — total route would exceed the budget");
+        } else {
+          // Point was moved off its original location — no longer at the beacon.
+          state.route.info[i] = null;
         }
         redrawRouteGeometry();
       });
@@ -592,10 +653,11 @@ function initMap() {
     });
   }
 
-  function tryAddRoutePoint(latlng) {
+  function tryAddRoutePoint(latlng, navInfo) {
     var pts = state.route.points;
     if (pts.length === 0) {
       pts.push(latlng);
+      state.route.info.push(navInfo || null);
       rebuildRouteMarkers();
       redrawRouteGeometry();
       return true;
@@ -604,6 +666,7 @@ function initMap() {
     var d = haversineM(pts[pts.length - 1], latlng);
     if (d <= remaining + EPS) {
       pts.push(latlng);
+      state.route.info.push(navInfo || null);
       rebuildRouteMarkers();
       redrawRouteGeometry();
       return true;
@@ -864,12 +927,14 @@ function initMap() {
   function onUndo() {
     if (state.route.points.length) {
       state.route.points.pop();
+      state.route.info.pop();
       rebuildRouteMarkers();
       redrawRouteGeometry();
     }
   }
   function onClear() {
     state.route.points = [];
+    state.route.info = [];
     rebuildRouteMarkers();
     redrawRouteGeometry();
   }
@@ -911,6 +976,14 @@ function initMap() {
   document.getElementById("undo-btn").onclick = onUndo;
   document.getElementById("clear-btn").onclick = onClear;
 
+  // Route points table — delegate delete clicks (innerHTML is rebuilt on every change).
+  $routePoints.addEventListener("click", function (e) {
+    var btn = e.target.closest(".rp-del");
+    if (!btn) return;
+    var i = parseInt(btn.getAttribute("data-idx"), 10);
+    if (!isNaN(i)) deleteRoutePoint(i);
+  });
+
   // Navaid controls
   var navEnableEl = document.getElementById("nav-enable");
   navEnableEl.addEventListener("change", onNavEnable);
@@ -935,10 +1008,7 @@ function initMap() {
       var del = node.querySelector(".route-pop-del");
       if (del)
         del.onclick = function () {
-          state.route.points.splice(src._routeIdx, 1);
-          map.closePopup();
-          rebuildRouteMarkers();
-          redrawRouteGeometry();
+          deleteRoutePoint(src._routeIdx);
         };
       return;
     }
@@ -951,7 +1021,13 @@ function initMap() {
         toast("Switch to Route mode to add points");
         return;
       }
-      var ok = tryAddRoutePoint(L.latLng(src._nav.lat, src._nav.lng));
+      var ok = tryAddRoutePoint(L.latLng(src._nav.lat, src._nav.lng), {
+        ident: src._nav.ident,
+        cat: src._nav.cat,
+        type: src._nav.type,
+        name: src._nav.name,
+        freq: src._nav.freq,
+      });
       if (ok) {
         map.closePopup();
         toast("Added " + src._nav.ident + " to route");
