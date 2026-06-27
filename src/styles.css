@@ -130,6 +130,11 @@ input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer;
 .rp-act { text-align: right; width: 1%; }
 .rp-del { border: none; background: transparent; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 2px 4px; border-radius: 5px; }
 .rp-del:hover { background: var(--danger, #dc2626); color: #fff; }
+.rp-grip { cursor: grab; color: var(--muted); user-select: none; width: 1%; text-align: center; }
+.rp-table tr[draggable] { cursor: default; }
+.rp-dragging { opacity: 0.5; }
+.rp-drop-before td { box-shadow: inset 0 2px 0 var(--accent); }
+.rp-drop-after td { box-shadow: inset 0 -2px 0 var(--accent); }
 
 /* Airport markers */
 .airport { display: flex; align-items: center; gap: 3px; white-space: nowrap; }

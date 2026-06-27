@@ -614,7 +614,9 @@ function initMap() {
           : '<span class="rp-tag rp-wpt">WPT</span>',
         freqCell = nf && !isApt ? escapeHtml(fmtNavFreq(nf.freq)) : "—";
       rows +=
-        '<tr><td class="rp-n">' +
+        '<tr draggable="true" data-idx="' +
+        i +
+        '"><td class="rp-grip" title="Drag to reorder">⠿</td><td class="rp-n">' +
         label +
         '</td><td class="rp-type">' +
         typeCell +
@@ -627,7 +629,7 @@ function initMap() {
         '" title="Delete point" aria-label="Delete point">✕</button></td></tr>';
     }
     $routePoints.innerHTML =
-      '<table class="rp-table"><thead><tr><th>#</th><th>Type</th><th>Freq</th><th>Coordinates</th><th></th></tr></thead><tbody>' +
+      '<table class="rp-table"><thead><tr><th></th><th>#</th><th>Type</th><th>Freq</th><th>Coordinates</th><th></th></tr></thead><tbody>' +
       rows +
       "</tbody></table>";
   }
@@ -637,6 +639,25 @@ function initMap() {
     state.route.points.splice(i, 1);
     state.route.info.splice(i, 1);
     map.closePopup();
+    rebuildRouteMarkers();
+    redrawRouteGeometry();
+  }
+
+  function moveRoutePoint(from, to) {
+    var p = state.route.points,
+      inf = state.route.info,
+      n = p.length;
+    if (from < 0 || from >= n || to < 0 || to >= n || from === to) return;
+    var pSnap = p.slice(),
+      iSnap = inf.slice(); // for revert
+    p.splice(to, 0, p.splice(from, 1)[0]);
+    inf.splice(to, 0, inf.splice(from, 1)[0]);
+    if (routeUsedM() > state.route.budgetM + EPS) {
+      state.route.points = pSnap;
+      state.route.info = iSnap;
+      toast("Reorder cancelled — total route would exceed the budget");
+      return;
+    }
     rebuildRouteMarkers();
     redrawRouteGeometry();
   }
@@ -1258,6 +1279,56 @@ function initMap() {
     if (!btn) return;
     var i = parseInt(btn.getAttribute("data-idx"), 10);
     if (!isNaN(i)) deleteRoutePoint(i);
+  });
+
+  // Route points table — drag rows to reorder (delegated; HTML5 DnD events bubble).
+  var rpDragFrom = -1;
+  function rpClearIndicators() {
+    var rows = $routePoints.querySelectorAll(".rp-drop-before, .rp-drop-after, .rp-dragging");
+    Array.prototype.forEach.call(rows, function (el) {
+      el.classList.remove("rp-drop-before", "rp-drop-after", "rp-dragging");
+    });
+  }
+  function rpDropAfter(tr, clientY) {
+    var r = tr.getBoundingClientRect();
+    return clientY - r.top > r.height / 2;
+  }
+  $routePoints.addEventListener("dragstart", function (e) {
+    var tr = e.target.closest("tr[draggable]");
+    if (!tr) return;
+    rpDragFrom = parseInt(tr.getAttribute("data-idx"), 10);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(rpDragFrom));
+    tr.classList.add("rp-dragging");
+  });
+  $routePoints.addEventListener("dragover", function (e) {
+    if (rpDragFrom < 0) return;
+    var tr = e.target.closest("tbody tr");
+    if (!tr) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    var after = rpDropAfter(tr, e.clientY);
+    $routePoints.querySelectorAll(".rp-drop-before, .rp-drop-after").forEach(function (el) {
+      el.classList.remove("rp-drop-before", "rp-drop-after");
+    });
+    tr.classList.add(after ? "rp-drop-after" : "rp-drop-before");
+  });
+  $routePoints.addEventListener("drop", function (e) {
+    if (rpDragFrom < 0) return;
+    var tr = e.target.closest("tbody tr");
+    if (tr) {
+      e.preventDefault();
+      var overIdx = parseInt(tr.getAttribute("data-idx"), 10);
+      var insertPos = rpDropAfter(tr, e.clientY) ? overIdx + 1 : overIdx;
+      var to = insertPos > rpDragFrom ? insertPos - 1 : insertPos;
+      moveRoutePoint(rpDragFrom, to);
+    }
+    rpClearIndicators();
+    rpDragFrom = -1;
+  });
+  $routePoints.addEventListener("dragend", function () {
+    rpClearIndicators();
+    rpDragFrom = -1;
   });
 
   // Navaid controls
