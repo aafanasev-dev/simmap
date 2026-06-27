@@ -131,4 +131,24 @@ input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer;
 .rp-del { border: none; background: transparent; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 2px 4px; border-radius: 5px; }
 .rp-del:hover { background: var(--danger, #dc2626); color: #fff; }
 
+/* Airport markers */
+.airport { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+.apt-sym { width: 10px; height: 10px; flex: none; background: #7c3aed; border: 1.5px solid #fff; border-radius: 50%; box-shadow: 0 0 1px rgba(0,0,0,0.6); }
+.apt-md .apt-sym { width: 12px; height: 12px; }
+.apt-lg .apt-sym { width: 14px; height: 14px; border-width: 2px; }
+.apt-id { font: 700 10px/1 -apple-system, sans-serif; color: #2a1454; text-shadow: 0 0 2px #fff, 0 0 2px #fff, 0 0 3px #fff; }
+
+/* Airport popup */
+.apt-pop { font: 13px -apple-system, sans-serif; min-width: 190px; max-width: 240px; }
+.apt-pop-id { font-weight: 700; font-size: 14px; color: var(--text); }
+.apt-pop-id span { font-weight: 500; font-size: 10.5px; color: var(--muted); margin-left: 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+.apt-pop-name { color: var(--muted); font-size: 11.5px; margin: 1px 0; }
+.apt-pop-sec { font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); margin: 9px 0 3px; border-bottom: 1px solid var(--border, rgba(0,0,0,0.12)); padding-bottom: 2px; }
+.apt-pop-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; padding: 1px 0; }
+.apt-pop-k { color: var(--text); }
+.apt-pop-v { color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.apt-pop-muted { color: var(--muted); }
+.apt-pop-btn { margin-top: 10px; width: 100%; border: none; background: var(--accent); color: #fff; border-radius: 8px; padding: 7px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.apt-pop-btn:hover { filter: brightness(1.08); }
+
 .leaflet-control-attribution { font-size: 10px; }

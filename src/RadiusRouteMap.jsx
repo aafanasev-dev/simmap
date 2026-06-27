@@ -115,6 +115,13 @@ export default function RadiusRouteMap() {
               Enable to load worldwide beacons (source: OurAirports). Click a beacon for its
               frequency.
             </div>
+            <label className="nav-toggle" style={{ marginTop: 10 }}>
+              <input type="checkbox" id="apt-enable" /> <span>Airports</span>
+            </label>
+            <div className="note" id="apt-status" style={{ marginTop: 8 }}>
+              Enable to load airports (source: OurAirports). Click one for runways &amp;
+              frequencies.
+            </div>
           </div>
 
           {/* RADIUS MODE */}
@@ -201,6 +208,12 @@ function initMap() {
   var NAV_URL = "https://davidmegginson.github.io/ourairports-data/navaids.csv";
   var MIN_NAV_ZOOM = 6,
     MAX_NAV = 500;
+  var APT_URL = "https://davidmegginson.github.io/ourairports-data/airports.csv";
+  var RWY_URL = "https://davidmegginson.github.io/ourairports-data/runways.csv";
+  var AFREQ_URL = "https://davidmegginson.github.io/ourairports-data/airport-frequencies.csv";
+  var MIN_APT_ZOOM = 7,
+    MAX_APT = 400;
+  var APT_TYPES = { small_airport: 1, medium_airport: 2, large_airport: 3 };
 
   function toRad(d) {
     return (d * Math.PI) / 180;
@@ -366,6 +379,13 @@ function initMap() {
       loading: false,
       types: { VOR: true, NDB: true, DME: true },
     };
+  var aptData = [],
+    rwyByApt = {},
+    freqByApt = {},
+    aptState = { enabled: false, loaded: false, loading: false, pending: 0 };
+  // True while an airport popup is open, so the moveend re-render (triggered by the
+  // popup's own autoPan) doesn't clearLayers() the marker and close the popup.
+  var aptPopupOpen = false;
 
   // ---- Layers ----
   var radiusCircle = L.polygon([], {
@@ -384,6 +404,7 @@ function initMap() {
     fillOpacity: 0.12,
   });
   var navaidLayer = L.layerGroup();
+  var airportLayer = L.layerGroup();
   radiusMarker.on("drag", function (e) {
     state.radius.center = e.target.getLatLng();
     renderRadius();
@@ -408,6 +429,7 @@ function initMap() {
   var presetWrap = document.getElementById("presets"),
     $navStatus = document.getElementById("nav-status");
   var $routePoints = document.getElementById("route-points");
+  var $aptStatus = document.getElementById("apt-status");
 
   function row(k, v) {
     return '<div class="stat-line"><span class="k">' + k + '</span><span class="v">' + v + "</span></div>";
@@ -578,8 +600,11 @@ function initMap() {
     var rows = "";
     for (var i = 0; i < pts.length; i++) {
       var nf = info[i],
+        isApt = nf && nf.cat === "APT",
         label = i === 0 ? "Start" : i === pts.length - 1 ? "End" : String(i),
-        typeCell = nf
+        typeCell = isApt
+          ? escapeHtml(nf.ident)
+          : nf
           ? '<span class="rp-tag rp-' +
             nf.cat.toLowerCase() +
             '">' +
@@ -587,7 +612,7 @@ function initMap() {
             "</span> " +
             escapeHtml(nf.ident)
           : '<span class="rp-tag rp-wpt">WPT</span>',
-        freqCell = nf ? escapeHtml(fmtNavFreq(nf.freq)) : "—";
+        freqCell = nf && !isApt ? escapeHtml(fmtNavFreq(nf.freq)) : "—";
       rows +=
         '<tr><td class="rp-n">' +
         label +
@@ -840,6 +865,245 @@ function initMap() {
     }
   }
 
+  // ---- Airports ----
+  function setAptStatus(msg) {
+    $aptStatus.textContent = msg;
+  }
+  function fmtMHz(v) {
+    var n = typeof v === "number" ? v : parseFloat(v);
+    if (!isFinite(n) || n <= 0) return "—";
+    return n.toFixed(3).replace(/0+$/, "").replace(/\.$/, "") + " MHz";
+  }
+  function isIls(type) {
+    return /ILS|LOC|GLS|GP\b/i.test(type || "");
+  }
+  function aptTypeLabel(t) {
+    return t === "large_airport"
+      ? "Large airport"
+      : t === "medium_airport"
+      ? "Medium airport"
+      : t === "small_airport"
+      ? "Small airport"
+      : t || "Airport";
+  }
+
+  function buildAirportPopup(a) {
+    var head =
+      '<div class="apt-pop-id">' +
+      escapeHtml(a.ident) +
+      (a.iata ? "<span>" + escapeHtml(a.iata) + "</span>" : "") +
+      "</div>" +
+      '<div class="apt-pop-name">' +
+      escapeHtml(aptTypeLabel(a.type)) +
+      (a.name ? " · " + escapeHtml(a.name) : "") +
+      "</div>" +
+      '<div class="apt-pop-name">' +
+      escapeHtml([a.muni, a.country].filter(Boolean).join(", ")) +
+      (isFinite(a.elev) ? " · " + Math.round(a.elev) + " ft" : "") +
+      "</div>";
+
+    var rwys = rwyByApt[a.ident] || [];
+    var rwHtml = '<div class="apt-pop-sec">Runways</div>';
+    if (!rwys.length) rwHtml += '<div class="apt-pop-row apt-pop-muted">No runway data</div>';
+    else
+      rwys.forEach(function (r) {
+        var name = [r.le, r.he].filter(Boolean).join("/") || "RWY";
+        var dims = r.len ? r.len + (r.wid ? "×" + r.wid : "") + " ft" : "";
+        var bits = [dims, r.surface, r.lit ? "lit" : ""].filter(Boolean).join(" · ");
+        rwHtml +=
+          '<div class="apt-pop-row"><span class="apt-pop-k">' +
+          escapeHtml(name) +
+          '</span><span class="apt-pop-v">' +
+          escapeHtml(bits) +
+          "</span></div>";
+      });
+
+    var freqs = freqByApt[a.ident] || [];
+    var atc = freqs.filter(function (f) {
+      return !isIls(f.type);
+    });
+    var ils = freqs.filter(function (f) {
+      return isIls(f.type);
+    });
+
+    function freqRow(f) {
+      var label = f.description || f.type || "";
+      return (
+        '<div class="apt-pop-row"><span class="apt-pop-k">' +
+        escapeHtml(label) +
+        '</span><span class="apt-pop-v">' +
+        escapeHtml(fmtMHz(f.mhz)) +
+        "</span></div>"
+      );
+    }
+
+    var atcHtml = '<div class="apt-pop-sec">ATC / COM</div>';
+    if (!atc.length) atcHtml += '<div class="apt-pop-row apt-pop-muted">No frequency data</div>';
+    else atcHtml += atc.map(freqRow).join("");
+
+    var ilsHtml = "";
+    if (ils.length) ilsHtml = '<div class="apt-pop-sec">ILS</div>' + ils.map(freqRow).join("");
+
+    return (
+      '<div class="apt-pop">' +
+      head +
+      rwHtml +
+      atcHtml +
+      ilsHtml +
+      '<button class="apt-pop-btn">＋ Add to route</button></div>'
+    );
+  }
+
+  function makeAirportMarker(a) {
+    var cls = a.type === "large_airport" ? "lg" : a.type === "medium_airport" ? "md" : "sm";
+    var icon = L.divIcon({
+      className: "",
+      iconSize: [12, 12],
+      iconAnchor: [6, 6],
+      html:
+        '<div class="airport apt-' +
+        cls +
+        '"><span class="apt-sym"></span><span class="apt-id">' +
+        escapeHtml(a.ident) +
+        "</span></div>",
+    });
+    var mk = L.marker([a.lat, a.lng], { icon: icon });
+    mk._apt = a;
+    mk.bindPopup(buildAirportPopup(a), { maxHeight: 280 });
+    return mk;
+  }
+
+  function renderAirports() {
+    airportLayer.clearLayers();
+    if (!aptState.enabled) return;
+    if (aptState.loading) {
+      setAptStatus("Loading airport database…");
+      return;
+    }
+    if (!aptState.loaded) return;
+    if (map.getZoom() < MIN_APT_ZOOM) {
+      setAptStatus("Zoom in to show airports (≥ z" + MIN_APT_ZOOM + ")");
+      return;
+    }
+    var b = map.getBounds(),
+      inView = [];
+    for (var i = 0; i < aptData.length; i++) {
+      var a = aptData[i];
+      if (b.contains([a.lat, a.lng])) inView.push(a);
+    }
+    var total = inView.length;
+    // Prefer larger airports when capping.
+    inView.sort(function (x, y) {
+      return (APT_TYPES[y.type] || 0) - (APT_TYPES[x.type] || 0);
+    });
+    var shown = Math.min(total, MAX_APT);
+    for (var j = 0; j < shown; j++) airportLayer.addLayer(makeAirportMarker(inView[j]));
+    setAptStatus(
+      total > MAX_APT
+        ? "Showing " + shown + " of " + total + " in view — zoom in for the rest"
+        : shown
+        ? "Showing " + shown + " airport" + (shown === 1 ? "" : "s")
+        : "No airports in view"
+    );
+  }
+
+  function ingestAirports(rows) {
+    aptData = [];
+    rows.forEach(function (r) {
+      if (!APT_TYPES[r.type]) return;
+      var lat = parseFloat(r.latitude_deg),
+        lng = parseFloat(r.longitude_deg);
+      if (isNaN(lat) || isNaN(lng)) return;
+      aptData.push({
+        ident: r.ident || "?",
+        name: r.name || "",
+        type: r.type || "",
+        lat: lat,
+        lng: lng,
+        elev: parseFloat(r.elevation_ft),
+        iata: r.iata_code || "",
+        muni: r.municipality || "",
+        country: r.iso_country || "",
+      });
+    });
+  }
+  function ingestRunways(rows) {
+    rwyByApt = {};
+    rows.forEach(function (r) {
+      if (r.closed === "1") return;
+      var k = r.airport_ident;
+      if (!k) return;
+      (rwyByApt[k] || (rwyByApt[k] = [])).push({
+        le: r.le_ident || "",
+        he: r.he_ident || "",
+        len: r.length_ft || "",
+        wid: r.width_ft || "",
+        surface: r.surface || "",
+        lit: r.lighted === "1",
+      });
+    });
+  }
+  function ingestAptFreqs(rows) {
+    freqByApt = {};
+    rows.forEach(function (r) {
+      var k = r.airport_ident;
+      if (!k) return;
+      (freqByApt[k] || (freqByApt[k] = [])).push({
+        type: r.type || "",
+        description: r.description || "",
+        mhz: parseFloat(r.frequency_mhz),
+      });
+    });
+  }
+
+  function loadAirports() {
+    if (aptState.loading || aptState.loaded) {
+      renderAirports();
+      return;
+    }
+    if (typeof Papa === "undefined") {
+      setAptStatus("CSV parser unavailable.");
+      return;
+    }
+    aptState.loading = true;
+    aptState.pending = 3;
+    setAptStatus("Loading airport database…");
+    var failed = false;
+    var guard = setTimeout(function () {
+      if (aptState.loading && !aptState.loaded) {
+        aptState.loading = false;
+        setAptStatus("Airport data blocked or slow — the sandbox may be preventing the download.");
+      }
+    }, 30000);
+    function fail() {
+      if (failed) return;
+      failed = true;
+      clearTimeout(guard);
+      aptState.loading = false;
+      setAptStatus("Could not load airport data (blocked or offline).");
+    }
+    function part(ingest) {
+      return function (res) {
+        if (failed) return;
+        ingest(res.data || []);
+        if (--aptState.pending === 0) {
+          clearTimeout(guard);
+          aptState.loaded = true;
+          aptState.loading = false;
+          renderAirports();
+        }
+      };
+    }
+    try {
+      var opts = { download: true, header: true, skipEmptyLines: true, error: fail };
+      Papa.parse(APT_URL, Object.assign({ complete: part(ingestAirports) }, opts));
+      Papa.parse(RWY_URL, Object.assign({ complete: part(ingestRunways) }, opts));
+      Papa.parse(AFREQ_URL, Object.assign({ complete: part(ingestAptFreqs) }, opts));
+    } catch (e) {
+      fail();
+    }
+  }
+
   function render() {
     if (state.mode === "radius") renderRadius();
     else redrawRouteGeometry();
@@ -876,6 +1140,7 @@ function initMap() {
       redrawRouteGeometry();
     }
     if (navState.enabled) map.addLayer(navaidLayer); // keep navaids above on top
+    if (aptState.enabled) map.addLayer(airportLayer); // and airports on top
   }
 
   function applySpeedChange() {
@@ -949,6 +1214,17 @@ function initMap() {
       setNavStatus("Navaids hidden.");
     }
   }
+  function onAptEnable() {
+    aptState.enabled = this.checked;
+    if (aptState.enabled) {
+      map.addLayer(airportLayer);
+      if (!aptState.loaded && !aptState.loading) loadAirports();
+      else renderAirports();
+    } else {
+      map.removeLayer(airportLayer);
+      setAptStatus("Airports hidden.");
+    }
+  }
   function onReset() {
     map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
     if (state.mode === "radius") {
@@ -987,6 +1263,7 @@ function initMap() {
   // Navaid controls
   var navEnableEl = document.getElementById("nav-enable");
   navEnableEl.addEventListener("change", onNavEnable);
+  document.getElementById("apt-enable").addEventListener("change", onAptEnable);
   var chipEls = document.querySelectorAll("#nav-types .chip");
   Array.prototype.forEach.call(chipEls, function (chip) {
     chip.addEventListener("click", function () {
@@ -1002,6 +1279,7 @@ function initMap() {
     var node = e.popup._contentNode,
       src = e.popup._source;
     if (!node || !src) return;
+    aptPopupOpen = !!src._apt;
 
     // Route waypoint popup: delete the point and reconnect its neighbours.
     if (src._routeIdx != null) {
@@ -1009,6 +1287,29 @@ function initMap() {
       if (del)
         del.onclick = function () {
           deleteRoutePoint(src._routeIdx);
+        };
+      return;
+    }
+
+    // Airport popup: add the airport as a route waypoint.
+    if (src._apt) {
+      var aBtn = node.querySelector(".apt-pop-btn");
+      if (aBtn)
+        aBtn.onclick = function () {
+          if (state.mode !== "route") {
+            toast("Switch to Route mode to add points");
+            return;
+          }
+          var a = src._apt;
+          var added = tryAddRoutePoint(L.latLng(a.lat, a.lng), {
+            kind: "airport",
+            cat: "APT",
+            ident: a.ident,
+          });
+          if (added) {
+            map.closePopup();
+            toast("Added " + a.ident + " to route");
+          }
         };
       return;
     }
@@ -1049,6 +1350,14 @@ function initMap() {
   });
   map.on("moveend zoomend", function () {
     if (navState.enabled) renderNavaids();
+    // Skip while an airport popup is open: re-rendering would clearLayers() and close it.
+    if (aptState.enabled && !aptPopupOpen) renderAirports();
+  });
+  map.on("popupclose", function (e) {
+    if (e.popup && e.popup._source && e.popup._source._apt) {
+      aptPopupOpen = false;
+      if (aptState.enabled) renderAirports(); // refresh markers for the (possibly panned) view
+    }
   });
 
   document.getElementById("reset").onclick = onReset;
