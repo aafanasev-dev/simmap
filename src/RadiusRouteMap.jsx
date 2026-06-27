@@ -258,6 +258,14 @@ function initMap() {
       Math.sin(dphi / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dlmb / 2) ** 2;
     return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
   }
+  function bearingDeg(a, b) {
+    var p1 = toRad(a.lat),
+      p2 = toRad(b.lat),
+      dl = toRad(b.lng - a.lng);
+    var y = Math.sin(dl) * Math.cos(p2);
+    var x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+    return (toDeg(Math.atan2(y, x)) + 360) % 360; // 0..360, true
+  }
   function geodesicRing(c, radiusM, n) {
     n = n || 256;
     var lat1 = toRad(c.lat),
@@ -382,6 +390,19 @@ function initMap() {
       html: '<div class="route-pin ' + role + '"></div>',
       iconSize: [15, 15],
       iconAnchor: [7.5, 7.5],
+    });
+  }
+  function legLabelMarker(latlng, deg) {
+    var txt = ("00" + (Math.round(deg) % 360)).slice(-3) + "°";
+    return L.marker(latlng, {
+      icon: L.divIcon({
+        className: "",
+        html: '<div class="leg-label">' + txt + "</div>",
+        iconSize: [34, 16],
+        iconAnchor: [17, 8],
+      }),
+      interactive: false,
+      keyboard: false,
     });
   }
 
@@ -591,10 +612,14 @@ function initMap() {
     var used = routeUsedM(),
       over = used > budget + EPS,
       color = over ? "#dc2626" : "#4f6df5";
-    for (var i = 0; i < pts.length - 1; i++)
-      routeLinesGroup.addLayer(
-        L.polyline(geodesicLine(pts[i], pts[i + 1]), { color: color, weight: 3, opacity: 0.9 })
-      );
+    for (var i = 0; i < pts.length - 1; i++) {
+      var line = geodesicLine(pts[i], pts[i + 1]);
+      routeLinesGroup.addLayer(L.polyline(line, { color: color, weight: 3, opacity: 0.9 }));
+      if (haversineM(pts[i], pts[i + 1]) > 1) {
+        var mid = line[Math.floor(line.length / 2)]; // a point on the curve
+        routeLinesGroup.addLayer(legLabelMarker(mid, bearingDeg(pts[i], pts[i + 1])));
+      }
+    }
 
     var remaining = budget - used,
       rem = Math.max(0, remaining);
