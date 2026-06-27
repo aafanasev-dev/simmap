@@ -97,30 +97,39 @@ export default function RadiusRouteMap() {
           {/* LAYERS (shared) */}
           <div id="layers-block">
             <div className="field-label">Map layers</div>
-            <label className="nav-toggle">
-              <input type="checkbox" id="nav-enable" /> <span>Navaids (VOR / NDB / DME)</span>
-            </label>
-            <div className="presets" id="nav-types">
-              <button className="chip active" data-cat="VOR">
-                VOR
-              </button>
-              <button className="chip active" data-cat="NDB">
-                NDB
-              </button>
-              <button className="chip active" data-cat="DME">
-                DME / TACAN
-              </button>
+            <div className="layer-group-label">Navaids</div>
+            <div className="layer-row">
+              <label className="nav-toggle">
+                <input type="checkbox" className="lyr-nav" data-cat="VOR" /> <span>VOR</span>
+              </label>
+              <label className="nav-toggle">
+                <input type="checkbox" className="lyr-nav" data-cat="DME" /> <span>DME / TACAN</span>
+              </label>
+              <label className="nav-toggle">
+                <input type="checkbox" className="lyr-nav" data-cat="NDB" /> <span>NDB</span>
+              </label>
             </div>
             <div className="note" id="nav-status" style={{ marginTop: 8 }}>
-              Enable to load worldwide beacons (source: OurAirports). Click a beacon for its
-              frequency.
+              Tick a beacon type to load worldwide navaids (source: OurAirports). Click a beacon
+              for its frequency.
             </div>
-            <label className="nav-toggle" style={{ marginTop: 10 }}>
-              <input type="checkbox" id="apt-enable" /> <span>Airports</span>
-            </label>
+            <div className="layer-group-label" style={{ marginTop: 12 }}>
+              Airports
+            </div>
+            <div className="layer-row">
+              <label className="nav-toggle">
+                <input type="checkbox" className="lyr-apt" data-grp="small" /> <span>Small</span>
+              </label>
+              <label className="nav-toggle">
+                <input type="checkbox" className="lyr-apt" data-grp="medium" /> <span>Medium</span>
+              </label>
+              <label className="nav-toggle">
+                <input type="checkbox" className="lyr-apt" data-grp="large" /> <span>Large</span>
+              </label>
+            </div>
             <div className="note" id="apt-status" style={{ marginTop: 8 }}>
-              Enable to load airports (source: OurAirports). Click one for runways &amp;
-              frequencies.
+              Tick an airport size to load airports (source: OurAirports). Click one for runways
+              &amp; frequencies.
             </div>
           </div>
 
@@ -374,15 +383,34 @@ function initMap() {
   };
   var navData = [],
     navState = {
-      enabled: false,
       loaded: false,
       loading: false,
-      types: { VOR: true, NDB: true, DME: true },
+      types: { VOR: false, NDB: false, DME: false },
     };
   var aptData = [],
     rwyByApt = {},
     freqByApt = {},
-    aptState = { enabled: false, loaded: false, loading: false, pending: 0 };
+    aptState = {
+      loaded: false,
+      loading: false,
+      pending: 0,
+      types: { small: false, medium: false, large: false },
+    };
+  function navAnyOn() {
+    return navState.types.VOR || navState.types.NDB || navState.types.DME;
+  }
+  function aptAnyOn() {
+    return aptState.types.small || aptState.types.medium || aptState.types.large;
+  }
+  function aptGroupOf(t) {
+    return t === "small_airport"
+      ? "small"
+      : t === "medium_airport"
+      ? "medium"
+      : t === "large_airport"
+      ? "large"
+      : null;
+  }
   // True while an airport popup is open, so the moveend re-render (triggered by the
   // popup's own autoPan) doesn't clearLayers() the marker and close the popup.
   var aptPopupOpen = false;
@@ -790,7 +818,7 @@ function initMap() {
 
   function renderNavaids() {
     navaidLayer.clearLayers();
-    if (!navState.enabled) return;
+    if (!navAnyOn()) return;
     if (navState.loading) {
       setNavStatus("Loading navaid database…");
       return;
@@ -996,7 +1024,7 @@ function initMap() {
 
   function renderAirports() {
     airportLayer.clearLayers();
-    if (!aptState.enabled) return;
+    if (!aptAnyOn()) return;
     if (aptState.loading) {
       setAptStatus("Loading airport database…");
       return;
@@ -1010,6 +1038,7 @@ function initMap() {
       inView = [];
     for (var i = 0; i < aptData.length; i++) {
       var a = aptData[i];
+      if (!aptState.types[aptGroupOf(a.type)]) continue;
       if (b.contains([a.lat, a.lng])) inView.push(a);
     }
     var total = inView.length;
@@ -1160,8 +1189,8 @@ function initMap() {
       rebuildRouteMarkers();
       redrawRouteGeometry();
     }
-    if (navState.enabled) map.addLayer(navaidLayer); // keep navaids above on top
-    if (aptState.enabled) map.addLayer(airportLayer); // and airports on top
+    if (navAnyOn()) map.addLayer(navaidLayer); // keep navaids above on top
+    if (aptAnyOn()) map.addLayer(airportLayer); // and airports on top
   }
 
   function applySpeedChange() {
@@ -1224,9 +1253,9 @@ function initMap() {
     rebuildRouteMarkers();
     redrawRouteGeometry();
   }
-  function onNavEnable() {
-    navState.enabled = this.checked;
-    if (navState.enabled) {
+  function setNavType(cat, on) {
+    navState.types[cat] = on;
+    if (navAnyOn()) {
       map.addLayer(navaidLayer);
       if (!navState.loaded && !navState.loading) loadNavaids();
       else renderNavaids();
@@ -1235,9 +1264,9 @@ function initMap() {
       setNavStatus("Navaids hidden.");
     }
   }
-  function onAptEnable() {
-    aptState.enabled = this.checked;
-    if (aptState.enabled) {
+  function setAptGroup(grp, on) {
+    aptState.types[grp] = on;
+    if (aptAnyOn()) {
       map.addLayer(airportLayer);
       if (!aptState.loaded && !aptState.loading) loadAirports();
       else renderAirports();
@@ -1331,17 +1360,15 @@ function initMap() {
     rpDragFrom = -1;
   });
 
-  // Navaid controls
-  var navEnableEl = document.getElementById("nav-enable");
-  navEnableEl.addEventListener("change", onNavEnable);
-  document.getElementById("apt-enable").addEventListener("change", onAptEnable);
-  var chipEls = document.querySelectorAll("#nav-types .chip");
-  Array.prototype.forEach.call(chipEls, function (chip) {
-    chip.addEventListener("click", function () {
-      var cat = chip.getAttribute("data-cat");
-      navState.types[cat] = !navState.types[cat];
-      chip.classList.toggle("active", navState.types[cat]);
-      if (navState.enabled) renderNavaids();
+  // Layer checkboxes — one per beacon type / airport size, each independent.
+  Array.prototype.forEach.call(document.querySelectorAll(".lyr-nav"), function (cb) {
+    cb.addEventListener("change", function () {
+      setNavType(cb.getAttribute("data-cat"), cb.checked);
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".lyr-apt"), function (cb) {
+    cb.addEventListener("change", function () {
+      setAptGroup(cb.getAttribute("data-grp"), cb.checked);
     });
   });
 
@@ -1420,14 +1447,14 @@ function initMap() {
     $readout.textContent = "—";
   });
   map.on("moveend zoomend", function () {
-    if (navState.enabled) renderNavaids();
+    if (navAnyOn()) renderNavaids();
     // Skip while an airport popup is open: re-rendering would clearLayers() and close it.
-    if (aptState.enabled && !aptPopupOpen) renderAirports();
+    if (aptAnyOn() && !aptPopupOpen) renderAirports();
   });
   map.on("popupclose", function (e) {
     if (e.popup && e.popup._source && e.popup._source._apt) {
       aptPopupOpen = false;
-      if (aptState.enabled) renderAirports(); // refresh markers for the (possibly panned) view
+      if (aptAnyOn()) renderAirports(); // refresh markers for the (possibly panned) view
     }
   });
 
