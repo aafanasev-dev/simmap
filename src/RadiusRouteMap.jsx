@@ -1851,9 +1851,10 @@ function initMap() {
       renderRanges();
     }
   }
-  // On a narrow screen the panels fold to bottom-right circular buttons (see the
-  // @media block in styles.css); dragging is disabled there.
-  var isMobile = window.matchMedia("(max-width: 640px)").matches;
+  // On a narrow screen the panels fold to right-edge circular buttons (see the
+  // @media block in styles.css); dragging is disabled there. Live media query so
+  // resizing across the breakpoint re-applies the layout.
+  var mql = window.matchMedia("(max-width: 640px)");
   var panel = document.getElementById("panel");
   var collapseBtn = document.getElementById("collapse-btn");
   var layersPanel = document.getElementById("layers-panel");
@@ -1865,13 +1866,32 @@ function initMap() {
   function onCollapse() {
     setPanelCollapsed(panel, collapseBtn, !panel.classList.contains("collapsed"));
     // Mobile: only one full-width sheet open at a time.
-    if (isMobile && !panel.classList.contains("collapsed"))
+    if (mql.matches && !panel.classList.contains("collapsed"))
       setPanelCollapsed(layersPanel, layersCollapseBtn, true);
   }
   function onLayersCollapse() {
     setPanelCollapsed(layersPanel, layersCollapseBtn, !layersPanel.classList.contains("collapsed"));
-    if (isMobile && !layersPanel.classList.contains("collapsed"))
+    if (mql.matches && !layersPanel.classList.contains("collapsed"))
       setPanelCollapsed(panel, collapseBtn, true);
+  }
+  function clearInlinePos(p) {
+    p.style.left = p.style.top = p.style.right = p.style.bottom = "";
+  }
+  // Apply the layout for the current breakpoint. Mobile: fold both panels and drop
+  // any inline drag offsets so the CSS centres the circles. Desktop: restore saved
+  // positions and re-enable dragging.
+  function applyResponsiveLayout(mobile) {
+    if (mobile) {
+      setPanelCollapsed(panel, collapseBtn, true);
+      setPanelCollapsed(layersPanel, layersCollapseBtn, true);
+      clearInlinePos(panel);
+      clearInlinePos(layersPanel);
+    } else {
+      clearInlinePos(panel);
+      clearInlinePos(layersPanel);
+      restorePanelPosition(panel, "simmap.pos.panel");
+      restorePanelPosition(layersPanel, "simmap.pos.layers");
+    }
   }
 
   // ---- Draggable panels ----
@@ -1904,11 +1924,13 @@ function initMap() {
   }
   function makeDraggable(panel, handle, key) {
     var dragging = false,
+      moved = false,
       startX = 0,
       startY = 0,
       startLeft = 0,
       startTop = 0;
     function onDown(e) {
+      if (mql.matches) return; // circles are fixed in mobile layout
       if (e.button !== 0 || (e.target.closest && e.target.closest("button"))) return;
       var rect = panel.getBoundingClientRect();
       startX = e.clientX;
@@ -1917,18 +1939,24 @@ function initMap() {
       startTop = rect.top;
       placePanel(panel, rect.left, rect.top);
       dragging = true;
+      moved = false;
+      handle.__dragMoved = false;
       panel.classList.add("panel-dragging");
       handle.setPointerCapture(e.pointerId);
       e.preventDefault();
     }
     function onMove(e) {
       if (!dragging) return;
+      if (Math.abs(e.clientX - startX) + Math.abs(e.clientY - startY) > 4) moved = true;
       var c = clampPanel(panel, startLeft + (e.clientX - startX), startTop + (e.clientY - startY));
       placePanel(panel, c.left, c.top);
     }
     function onUp(e) {
       if (!dragging) return;
       dragging = false;
+      // Mark a real move so the synthetic click that follows the drag doesn't
+      // trigger the tap-to-expand handler on the same header.
+      if (moved) handle.__dragMoved = true;
       panel.classList.remove("panel-dragging");
       try {
         handle.releasePointerCapture(e.pointerId);
@@ -2172,10 +2200,12 @@ function initMap() {
   // Tapping a folded panel (its header) expands it. Ignore clicks on the inner
   // buttons (the collapse "−" handles itself when expanded).
   document.getElementById("panel-header").addEventListener("click", function (e) {
+    if (this.__dragMoved) { this.__dragMoved = false; return; }
     if (e.target.closest("button")) return;
     if (panel.classList.contains("collapsed")) onCollapse();
   });
   document.getElementById("layers-header").addEventListener("click", function (e) {
+    if (this.__dragMoved) { this.__dragMoved = false; return; }
     if (e.target.closest("button")) return;
     if (layersPanel.classList.contains("collapsed")) onLayersCollapse();
   });
@@ -2217,18 +2247,15 @@ function initMap() {
   rebuildPresets();
   syncRangesInputs();
   setMode(state.mode);
-  // Mobile: start both panels folded into their corner circles; skip dragging
-  // (so no inline positions fight the media-query layout).
-  var disposeDragPanel, disposeDragLayers;
-  if (isMobile) {
-    setPanelCollapsed(panel, collapseBtn, true);
-    setPanelCollapsed(layersPanel, layersCollapseBtn, true);
-  } else {
-    disposeDragPanel = makeDraggable(panel, document.getElementById("panel-header"), "simmap.pos.panel");
-    disposeDragLayers = makeDraggable(layersPanel, document.getElementById("layers-header"), "simmap.pos.layers");
-    restorePanelPosition(panel, "simmap.pos.panel");
-    restorePanelPosition(layersPanel, "simmap.pos.layers");
-  }
+  // Dragging is always wired (onDown no-ops in mobile); the responsive layout is
+  // (re)applied at load and whenever the viewport crosses the 640px breakpoint.
+  var disposeDragPanel = makeDraggable(panel, document.getElementById("panel-header"), "simmap.pos.panel");
+  var disposeDragLayers = makeDraggable(layersPanel, document.getElementById("layers-header"), "simmap.pos.layers");
+  applyResponsiveLayout(mql.matches);
+  var onMqlChange = function (e) {
+    applyResponsiveLayout(e.matches);
+  };
+  mql.addEventListener("change", onMqlChange);
   var sizeTimer = setTimeout(function () {
     map.invalidateSize();
   }, 80);
@@ -2238,8 +2265,9 @@ function initMap() {
     clearTimeout(sizeTimer);
     clearTimeout(toastTimer);
     clearTimeout(saveTimer);
-    if (disposeDragPanel) disposeDragPanel();
-    if (disposeDragLayers) disposeDragLayers();
+    mql.removeEventListener("change", onMqlChange);
+    disposeDragPanel();
+    disposeDragLayers();
     map.remove();
   };
 }

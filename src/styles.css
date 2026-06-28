@@ -200,13 +200,13 @@ input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer;
     max-height: calc(100vh - 24px);
   }
 
-  /* Folded → circular button, stacked in the bottom-right corner. */
+  /* Folded → circular button, stacked on the right edge, vertically centred. */
   #panel.collapsed, #layers-panel.collapsed {
-    width: 56px; height: 56px; min-width: 0; left: auto; right: 16px; top: auto;
+    width: 56px; height: 56px; min-width: 0; left: auto; right: 16px; bottom: auto;
     border-radius: 50%;
   }
-  #layers-panel.collapsed { bottom: 16px; }
-  #panel.collapsed { bottom: 84px; }
+  #panel.collapsed { top: calc(50% - 62px); }      /* upper of the pair */
+  #layers-panel.collapsed { top: calc(50% + 6px); } /* lower of the pair */
 
   /* The header is the round tappable button; only its pictogram shows. */
   #panel.collapsed #panel-header, #layers-panel.collapsed #layers-header {
