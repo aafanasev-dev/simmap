@@ -230,6 +230,20 @@ export default function RadiusRouteMap() {
       {/* LAYERS PANEL (top-right) */}
       <div id="layers-panel">
         <div id="layers-header">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+            <polyline points="2 17 12 22 22 17"></polyline>
+            <polyline points="2 12 12 17 22 12"></polyline>
+          </svg>
           <span className="layers-title">Map layers</span>
           <button id="layers-collapse-btn" title="Collapse">
             −
@@ -1837,17 +1851,27 @@ function initMap() {
       renderRanges();
     }
   }
+  // On a narrow screen the panels fold to bottom-right circular buttons (see the
+  // @media block in styles.css); dragging is disabled there.
+  var isMobile = window.matchMedia("(max-width: 640px)").matches;
   var panel = document.getElementById("panel");
   var collapseBtn = document.getElementById("collapse-btn");
-  function onCollapse() {
-    panel.classList.toggle("collapsed");
-    collapseBtn.textContent = panel.classList.contains("collapsed") ? "+" : "−";
-  }
   var layersPanel = document.getElementById("layers-panel");
   var layersCollapseBtn = document.getElementById("layers-collapse-btn");
+  function setPanelCollapsed(p, btn, collapsed) {
+    p.classList.toggle("collapsed", collapsed);
+    btn.textContent = collapsed ? "+" : "−";
+  }
+  function onCollapse() {
+    setPanelCollapsed(panel, collapseBtn, !panel.classList.contains("collapsed"));
+    // Mobile: only one full-width sheet open at a time.
+    if (isMobile && !panel.classList.contains("collapsed"))
+      setPanelCollapsed(layersPanel, layersCollapseBtn, true);
+  }
   function onLayersCollapse() {
-    layersPanel.classList.toggle("collapsed");
-    layersCollapseBtn.textContent = layersPanel.classList.contains("collapsed") ? "+" : "−";
+    setPanelCollapsed(layersPanel, layersCollapseBtn, !layersPanel.classList.contains("collapsed"));
+    if (isMobile && !layersPanel.classList.contains("collapsed"))
+      setPanelCollapsed(panel, collapseBtn, true);
   }
 
   // ---- Draggable panels ----
@@ -2145,6 +2169,17 @@ function initMap() {
   collapseBtn.onclick = onCollapse;
   layersCollapseBtn.onclick = onLayersCollapse;
 
+  // Tapping a folded panel (its header) expands it. Ignore clicks on the inner
+  // buttons (the collapse "−" handles itself when expanded).
+  document.getElementById("panel-header").addEventListener("click", function (e) {
+    if (e.target.closest("button")) return;
+    if (panel.classList.contains("collapsed")) onCollapse();
+  });
+  document.getElementById("layers-header").addEventListener("click", function (e) {
+    if (e.target.closest("button")) return;
+    if (layersPanel.classList.contains("collapsed")) onLayersCollapse();
+  });
+
   // ---- Init ----
   // Restore persisted state (saved was read at the top). Drive the existing
   // setters so layer data lazy-loads and the checkboxes reflect what's enabled.
@@ -2182,10 +2217,18 @@ function initMap() {
   rebuildPresets();
   syncRangesInputs();
   setMode(state.mode);
-  var disposeDragPanel = makeDraggable(panel, document.getElementById("panel-header"), "simmap.pos.panel");
-  var disposeDragLayers = makeDraggable(layersPanel, document.getElementById("layers-header"), "simmap.pos.layers");
-  restorePanelPosition(panel, "simmap.pos.panel");
-  restorePanelPosition(layersPanel, "simmap.pos.layers");
+  // Mobile: start both panels folded into their corner circles; skip dragging
+  // (so no inline positions fight the media-query layout).
+  var disposeDragPanel, disposeDragLayers;
+  if (isMobile) {
+    setPanelCollapsed(panel, collapseBtn, true);
+    setPanelCollapsed(layersPanel, layersCollapseBtn, true);
+  } else {
+    disposeDragPanel = makeDraggable(panel, document.getElementById("panel-header"), "simmap.pos.panel");
+    disposeDragLayers = makeDraggable(layersPanel, document.getElementById("layers-header"), "simmap.pos.layers");
+    restorePanelPosition(panel, "simmap.pos.panel");
+    restorePanelPosition(layersPanel, "simmap.pos.layers");
+  }
   var sizeTimer = setTimeout(function () {
     map.invalidateSize();
   }, 80);
@@ -2195,8 +2238,8 @@ function initMap() {
     clearTimeout(sizeTimer);
     clearTimeout(toastTimer);
     clearTimeout(saveTimer);
-    disposeDragPanel();
-    disposeDragLayers();
+    if (disposeDragPanel) disposeDragPanel();
+    if (disposeDragLayers) disposeDragLayers();
     map.remove();
   };
 }

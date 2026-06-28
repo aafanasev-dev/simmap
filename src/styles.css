@@ -27,7 +27,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 
 #panel-header, #layers-header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; flex-shrink: 0; cursor: grab; user-select: none; touch-action: none; }
 #panel.panel-dragging #panel-header, #layers-panel.panel-dragging #layers-header { cursor: grabbing; }
-#panel-header svg { color: var(--accent); flex-shrink: 0; }
+#panel-header svg, #layers-header svg { color: var(--accent); flex-shrink: 0; }
 #panel-header h1, .layers-title { font-size: 15px; font-weight: 650; letter-spacing: -0.2px; }
 #collapse-btn, #layers-collapse-btn {
   margin-left: auto; border: none; background: var(--accent-soft); color: var(--accent);
@@ -191,3 +191,34 @@ input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer;
 .wpt-pop-btn:hover { filter: brightness(1.08); }
 
 .leaflet-control-attribution { font-size: 10px; }
+
+/* ---- Mobile / narrow viewport: fold panels into bottom-right FAB circles ---- */
+@media (max-width: 640px) {
+  /* Expanded panels become full-width top sheets. */
+  #panel, #layers-panel {
+    top: 12px; left: 12px; right: 12px; width: auto; max-width: none;
+    max-height: calc(100vh - 24px);
+  }
+
+  /* Folded → circular button, stacked in the bottom-right corner. */
+  #panel.collapsed, #layers-panel.collapsed {
+    width: 56px; height: 56px; min-width: 0; left: auto; right: 16px; top: auto;
+    border-radius: 50%;
+  }
+  #layers-panel.collapsed { bottom: 16px; }
+  #panel.collapsed { bottom: 84px; }
+
+  /* The header is the round tappable button; only its pictogram shows. */
+  #panel.collapsed #panel-header, #layers-panel.collapsed #layers-header {
+    width: 56px; height: 56px; padding: 0; gap: 0; justify-content: center; cursor: pointer;
+  }
+  #panel.collapsed #panel-header h1, #layers-panel.collapsed .layers-title,
+  #panel.collapsed #collapse-btn, #layers-panel.collapsed #layers-collapse-btn { display: none; }
+  #panel.collapsed #panel-header svg, #layers-panel.collapsed #layers-header svg {
+    width: 24px; height: 24px;
+  }
+
+  /* Bottom-right overlays would sit under the FABs. */
+  #coord-readout { display: none; }
+  #sim-disclaimer { left: 12px; right: auto; text-align: left; max-width: calc(100% - 90px); }
+}
