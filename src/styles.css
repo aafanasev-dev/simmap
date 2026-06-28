@@ -15,7 +15,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 #app { position: relative; width: 100%; height: 100vh; overflow: hidden; }
 #map { position: absolute; inset: 0; z-index: 1; background: #aadaff; }
 
-#panel {
+#panel, #layers-panel {
   position: absolute; top: 16px; left: 16px; z-index: 1000;
   width: 312px; max-width: calc(100% - 32px);
   background: var(--panel-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
@@ -23,18 +23,22 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18); color: var(--text); overflow: hidden;
   max-height: calc(100vh - 32px); display: flex; flex-direction: column;
 }
-#panel-header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; flex-shrink: 0; }
+#layers-panel { top: 78px; right: 16px; left: auto; max-height: calc(100vh - 94px); }
+
+#panel-header, #layers-header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; flex-shrink: 0; cursor: grab; user-select: none; touch-action: none; }
+#panel.panel-dragging #panel-header, #layers-panel.panel-dragging #layers-header { cursor: grabbing; }
 #panel-header svg { color: var(--accent); flex-shrink: 0; }
-#panel-header h1 { font-size: 15px; font-weight: 650; letter-spacing: -0.2px; }
-#collapse-btn {
+#panel-header h1, .layers-title { font-size: 15px; font-weight: 650; letter-spacing: -0.2px; }
+#collapse-btn, #layers-collapse-btn {
   margin-left: auto; border: none; background: var(--accent-soft); color: var(--accent);
   width: 26px; height: 26px; border-radius: 8px; cursor: pointer; font-size: 16px; line-height: 1;
   display: grid; place-items: center; transition: background 0.15s;
 }
-#collapse-btn:hover { background: rgba(79, 109, 245, 0.28); }
+#collapse-btn:hover, #layers-collapse-btn:hover { background: rgba(79, 109, 245, 0.28); }
 
 #panel-body { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
-#panel.collapsed #panel-body { display: none; }
+#layers-panel-body { padding: 0 16px 16px; overflow-y: auto; }
+#panel.collapsed #panel-body, #layers-panel.collapsed #layers-panel-body { display: none; }
 
 #mode-toggle { display: flex; gap: 3px; background: rgba(0,0,0,0.05); border-radius: 11px; padding: 3px; }
 .seg-btn { flex: 1; border: none; background: transparent; color: var(--muted); padding: 8px; font-size: 13px; font-weight: 550; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
@@ -43,10 +47,25 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .field-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); margin-bottom: 7px; }
 
 .radius-row { display: flex; gap: 8px; }
-.radius-row input[type="number"] { flex: 1; min-width: 0; padding: 9px 11px; font-size: 14px; border: 1px solid var(--border); border-radius: 10px; background: #fff; color: var(--text); outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
-.radius-row input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.radius-row input[type="number"], .radius-row input[type="text"] { flex: 1; min-width: 0; padding: 9px 11px; font-size: 14px; border: 1px solid var(--border); border-radius: 10px; background: #fff; color: var(--text); outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
+.radius-row input[type="number"]:focus, .radius-row input[type="text"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+#airport-input { letter-spacing: 1px; font-weight: 600; }
 .radius-row select { padding: 9px 8px; font-size: 14px; border: 1px solid var(--border); border-radius: 10px; background: #fff; color: var(--text); cursor: pointer; outline: none; }
 input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; margin-top: 10px; }
+
+/* Ranges-mode regime inputs & colour swatches */
+.range-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.range-swatch.rng-max { background: #dc2626; }
+.range-swatch.rng-opt { background: #4f6df5; }
+.range-swatch.rng-end { background: #16a34a; }
+.rng-cons-unit { display: flex; align-items: center; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.radius-row .rng-speed, .radius-row .rng-cons { flex: 1; min-width: 0; }
+
+/* Flight-time label on each range circle */
+.range-time { display: flex; align-items: center; justify-content: center; font: 700 10px/1 -apple-system, sans-serif; background: rgba(255,255,255,0.92); border: 1px solid var(--border, rgba(0,0,0,0.15)); border-radius: 5px; padding: 1px 4px; white-space: nowrap; box-shadow: 0 1px 2px rgba(0,0,0,0.25); pointer-events: none; font-variant-numeric: tabular-nums; }
+.range-time.rng-max { color: #dc2626; }
+.range-time.rng-opt { color: #4f6df5; }
+.range-time.rng-end { color: #16a34a; }
 
 .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .preset, .chip { border: 1px solid var(--border); background: #fff; color: var(--muted); font-size: 12px; padding: 5px 9px; border-radius: 8px; cursor: pointer; transition: all 0.12s; font-weight: 550; }

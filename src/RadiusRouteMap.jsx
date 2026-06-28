@@ -38,7 +38,7 @@ export default function RadiusRouteMap() {
             <line x1="2" y1="12" x2="22" y2="12"></line>
             <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
           </svg>
-          <h1>Radius &amp; Route Map</h1>
+          <h1>Ranges &amp; Flight Plan</h1>
           <button id="collapse-btn" title="Collapse">
             −
           </button>
@@ -46,12 +46,98 @@ export default function RadiusRouteMap() {
 
         <div id="panel-body">
           <div id="mode-toggle">
-            <button className="seg-btn active" id="mode-radius">
-              Radius
+            <button className="seg-btn active" id="mode-ranges">
+              Ranges
             </button>
-            <button className="seg-btn" id="mode-route">
-              Route
+            <button className="seg-btn" id="mode-plan">
+              Flight plan
             </button>
+          </div>
+
+          {/* RANGES MODE — fuel-based control */}
+          <div id="ranges-control">
+            <div className="field-label">Centre airport (ICAO)</div>
+            <div className="radius-row">
+              <input
+                type="text"
+                id="airport-input"
+                maxLength="4"
+                autoComplete="off"
+                spellCheck="false"
+                placeholder="e.g. LSGB"
+                style={{ flex: 1, minWidth: 0, textTransform: "uppercase" }}
+              />
+            </div>
+            <div className="note" id="airport-status" style={{ marginTop: 6 }}>
+              Type an airport code to centre the circles there.
+            </div>
+
+            <div className="field-label" style={{ marginTop: 14 }}>
+              Fuel capacity
+            </div>
+            <div className="radius-row">
+              <input type="number" id="fuel-input" min="0" step="any" defaultValue="50" />
+              <select id="fuel-unit" defaultValue="gal">
+                <option value="gal">gal</option>
+                <option value="L">L</option>
+                <option value="lb">lb</option>
+                <option value="kg">kg</option>
+              </select>
+            </div>
+
+            <label className="nav-toggle" style={{ marginTop: 12 }}>
+              <input type="checkbox" id="reserve-toggle" defaultChecked /> <span>Include 40 min reserve</span>
+            </label>
+
+            <div className="rng-regime" style={{ marginTop: 14 }}>
+              <div className="field-label">
+                <span className="range-swatch rng-max"></span> Max cruise
+              </div>
+              <div className="radius-row">
+                <input type="number" className="rng-speed" id="rng-max-speed" min="0" step="any" placeholder="speed" defaultValue="140" />
+                <input type="number" className="rng-cons" id="rng-max-cons" min="0" step="any" placeholder="cons." defaultValue="11" />
+                <span className="rng-cons-unit">gal/h</span>
+              </div>
+            </div>
+            <div className="rng-regime" style={{ marginTop: 12 }}>
+              <div className="field-label">
+                <span className="range-swatch rng-opt"></span> Optimal cruise
+              </div>
+              <div className="radius-row">
+                <input type="number" className="rng-speed" id="rng-opt-speed" min="0" step="any" placeholder="speed" defaultValue="120" />
+                <input type="number" className="rng-cons" id="rng-opt-cons" min="0" step="any" placeholder="cons." defaultValue="8" />
+                <span className="rng-cons-unit">gal/h</span>
+              </div>
+            </div>
+            <div className="rng-regime" style={{ marginTop: 12 }}>
+              <div className="field-label">
+                <span className="range-swatch rng-end"></span> Best endurance
+              </div>
+              <div className="radius-row">
+                <input type="number" className="rng-speed" id="rng-end-speed" min="0" step="any" placeholder="speed" defaultValue="90" />
+                <input type="number" className="rng-cons" id="rng-end-cons" min="0" step="any" placeholder="cons." defaultValue="6" />
+                <span className="rng-cons-unit">gal/h</span>
+              </div>
+            </div>
+
+            <div className="radius-row" style={{ marginTop: 14 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="field-label">Speed unit</div>
+                <select id="rng-speed-unit" defaultValue="kt" style={{ width: "100%" }}>
+                  <option value="kt">kt</option>
+                  <option value="km/h">km/h</option>
+                  <option value="mph">mph</option>
+                </select>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="field-label">Show radius in</div>
+                <select id="rng-dist-unit" defaultValue="nmi" style={{ width: "100%" }}>
+                  <option value="km">km</option>
+                  <option value="mi">mi</option>
+                  <option value="nmi">nmi</option>
+                </select>
+              </div>
+            </div>
           </div>
 
           <div id="radius-control">
@@ -94,61 +180,13 @@ export default function RadiusRouteMap() {
             </div>
           </div>
 
-          {/* LAYERS (shared) */}
-          <div id="layers-block">
-            <div className="field-label">Map layers</div>
-            <div className="layer-group-label">Navaids</div>
-            <div className="layer-row">
-              <label className="nav-toggle">
-                <input type="checkbox" className="lyr-nav" data-cat="VOR" /> <span>VOR</span>
-              </label>
-              <label className="nav-toggle">
-                <input type="checkbox" className="lyr-nav" data-cat="DME" /> <span>DME / TACAN</span>
-              </label>
-              <label className="nav-toggle">
-                <input type="checkbox" className="lyr-nav" data-cat="NDB" /> <span>NDB</span>
-              </label>
-            </div>
-            <div className="note" id="nav-status" style={{ marginTop: 8 }}>
-              Tick a beacon type to load worldwide navaids (source: OurAirports). Click a beacon
-              for its frequency.
-            </div>
-            <div className="layer-group-label" style={{ marginTop: 12 }}>
-              Airports
-            </div>
-            <div className="layer-row">
-              <label className="nav-toggle">
-                <input type="checkbox" className="lyr-apt" data-grp="small" /> <span>Small</span>
-              </label>
-              <label className="nav-toggle">
-                <input type="checkbox" className="lyr-apt" data-grp="medium" /> <span>Medium</span>
-              </label>
-              <label className="nav-toggle">
-                <input type="checkbox" className="lyr-apt" data-grp="large" /> <span>Large</span>
-              </label>
-            </div>
-            <div className="note" id="apt-status" style={{ marginTop: 8 }}>
-              Tick an airport size to load airports (source: OurAirports). Click one for runways
-              &amp; frequencies.
-            </div>
-            <div className="layer-group-label" style={{ marginTop: 12 }}>
-              Waypoints
-            </div>
-            <label className="nav-toggle">
-              <input type="checkbox" id="wpt-enable" /> <span>5-letter fixes</span>
-            </label>
-            <div className="note" id="wpt-status" style={{ marginTop: 8 }}>
-              Tick to load worldwide RNAV waypoints (X-Plane GPL data, cycle 2012).
-            </div>
-          </div>
-
-          {/* RADIUS MODE */}
-          <div id="radius-view">
-            <div className="stats" id="radius-stats"></div>
+          {/* RANGES MODE */}
+          <div id="ranges-view">
+            <div className="stats" id="ranges-stats"></div>
             <div className="note" style={{ marginTop: 14 }}>
-              Click or drag the pin to move the centre. The shape is a{" "}
-              <b>true geodesic circle</b> — every point sits the same ground distance from the
-              centre, so Web&nbsp;Mercator stretches it toward the poles.
+              Click or drag the pin to move the centre. Each circle is the{" "}
+              <b>full one-way range</b> for that regime — a <b>true geodesic circle</b>, so
+              Web&nbsp;Mercator stretches it toward the poles.
             </div>
           </div>
 
@@ -189,6 +227,62 @@ export default function RadiusRouteMap() {
         </div>
       </div>
 
+      {/* LAYERS PANEL (top-right) */}
+      <div id="layers-panel">
+        <div id="layers-header">
+          <span className="layers-title">Map layers</span>
+          <button id="layers-collapse-btn" title="Collapse">
+            −
+          </button>
+        </div>
+
+        <div id="layers-panel-body">
+          <div className="layer-group-label">Navaids</div>
+          <div className="layer-row">
+            <label className="nav-toggle">
+              <input type="checkbox" className="lyr-nav" data-cat="VOR" /> <span>VOR</span>
+            </label>
+            <label className="nav-toggle">
+              <input type="checkbox" className="lyr-nav" data-cat="DME" /> <span>DME / TACAN</span>
+            </label>
+            <label className="nav-toggle">
+              <input type="checkbox" className="lyr-nav" data-cat="NDB" /> <span>NDB</span>
+            </label>
+          </div>
+          <div className="note" id="nav-status" style={{ marginTop: 8 }}>
+            Tick a beacon type to load worldwide navaids (source: OurAirports). Click a beacon for
+            its frequency.
+          </div>
+          <div className="layer-group-label" style={{ marginTop: 12 }}>
+            Airports
+          </div>
+          <div className="layer-row">
+            <label className="nav-toggle">
+              <input type="checkbox" className="lyr-apt" data-grp="small" /> <span>Small</span>
+            </label>
+            <label className="nav-toggle">
+              <input type="checkbox" className="lyr-apt" data-grp="medium" /> <span>Medium</span>
+            </label>
+            <label className="nav-toggle">
+              <input type="checkbox" className="lyr-apt" data-grp="large" /> <span>Large</span>
+            </label>
+          </div>
+          <div className="note" id="apt-status" style={{ marginTop: 8 }}>
+            Tick an airport size to load airports (source: OurAirports). Click one for runways
+            &amp; frequencies.
+          </div>
+          <div className="layer-group-label" style={{ marginTop: 12 }}>
+            Waypoints
+          </div>
+          <label className="nav-toggle">
+            <input type="checkbox" id="wpt-enable" /> <span>5-letter fixes</span>
+          </label>
+          <div className="note" id="wpt-status" style={{ marginTop: 8 }}>
+            Tick to load worldwide RNAV waypoints (X-Plane GPL data, cycle 2012).
+          </div>
+        </div>
+      </div>
+
       <div id="coord-readout">—</div>
       <div id="sim-disclaimer">For flight-simulator use only — not for real-world navigation.</div>
       <div id="toast"></div>
@@ -202,8 +296,17 @@ export default function RadiusRouteMap() {
 // ---------------------------------------------------------------------------
 function initMap() {
   var R = 6371008.8;
+  var SAVE_KEY = "simmap.state",
+    SAVE_VERSION = 2;
   var UNITS = { km: 1000, mi: 1609.344, nmi: 1852 };
   var SPEED_UNITS = { kt: 0.5144444, "km/h": 0.2777778, mph: 0.44704 };
+  var RESERVE_MIN = 40;
+  // Range regimes (order = draw order; later = drawn on top). Colours per request.
+  var REGIMES = [
+    { key: "max", label: "Max cruise", color: "#dc2626" },
+    { key: "opt", label: "Optimal cruise", color: "#4f6df5" },
+    { key: "end", label: "Best endurance", color: "#16a34a" },
+  ];
   var DIST_PRESETS = [
     ["10 km", 10000],
     ["50 km", 50000],
@@ -359,10 +462,24 @@ function initMap() {
     return (h > 0 ? h + " h " : "") + m + " min";
   }
 
+  // ---- Persisted state ----
+  // The whole app state (view, mode, units, layers, drawn geometry) is mirrored
+  // into a single localStorage key so it survives reloads. loadState() only reads
+  // localStorage, so it is safe to call before the map/DOM exist.
+  function loadState() {
+    try {
+      var d = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
+      return d && d.v === SAVE_VERSION ? d : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  var saved = loadState();
+
   // ---- Map ----
   var map = L.map("map", {
-    center: DEFAULT_CENTER,
-    zoom: DEFAULT_ZOOM,
+    center: saved && saved.view ? [saved.view.lat, saved.view.lng] : DEFAULT_CENTER,
+    zoom: saved && saved.view ? saved.view.zoom : DEFAULT_ZOOM,
     zoomControl: false,
     worldCopyJump: true,
     minZoom: 2,
@@ -405,16 +522,69 @@ function initMap() {
       keyboard: false,
     });
   }
+  function rangeTimeMarker(latlng, text, key) {
+    return L.marker(latlng, {
+      icon: L.divIcon({
+        className: "",
+        html: '<div class="range-time rng-' + key + '">' + text + "</div>",
+        iconSize: [50, 16],
+        iconAnchor: [25, 8],
+      }),
+      interactive: false,
+      keyboard: false,
+    });
+  }
 
   // ---- State ----
   var state = {
-    mode: "radius",
+    mode: "ranges",
     unit: "km",
     speedMS: 0,
     speedUnit: "kt",
-    radius: { center: L.latLng(DEFAULT_CENTER[0], DEFAULT_CENTER[1]), radiusM: 100000 },
+    ranges: {
+      center: L.latLng(DEFAULT_CENTER[0], DEFAULT_CENTER[1]),
+      airport: "",
+      fuel: 50,
+      fuelUnit: "gal",
+      speedUnit: "kt",
+      distUnit: "nmi",
+      reserve: true,
+      profiles: {
+        max: { speed: 140, cons: 11 },
+        opt: { speed: 120, cons: 8 },
+        end: { speed: 90, cons: 6 },
+      },
+    },
     route: { budgetM: 100000, points: [], info: [] },
   };
+  // Overlay any persisted state before layers/markers are built from it.
+  if (saved) {
+    state.mode = saved.mode || state.mode;
+    state.unit = saved.unit || state.unit;
+    state.speedUnit = saved.speedUnit || state.speedUnit;
+    if (saved.ranges) {
+      var sr = saved.ranges;
+      if (sr.center) state.ranges.center = L.latLng(sr.center.lat, sr.center.lng);
+      if (typeof sr.airport === "string") state.ranges.airport = sr.airport;
+      if (typeof sr.fuel === "number") state.ranges.fuel = sr.fuel;
+      state.ranges.fuelUnit = sr.fuelUnit || state.ranges.fuelUnit;
+      state.ranges.speedUnit = sr.speedUnit || state.ranges.speedUnit;
+      state.ranges.distUnit = sr.distUnit || state.ranges.distUnit;
+      if (typeof sr.reserve === "boolean") state.ranges.reserve = sr.reserve;
+      if (sr.profiles) {
+        ["max", "opt", "end"].forEach(function (k) {
+          if (sr.profiles[k]) state.ranges.profiles[k] = sr.profiles[k];
+        });
+      }
+    }
+    if (saved.route) {
+      state.route.budgetM = saved.route.budgetM;
+      state.route.points = (saved.route.points || []).map(function (p) {
+        return L.latLng(p.lat, p.lng);
+      });
+      state.route.info = saved.route.info || [];
+    }
+  }
   var navData = [],
     navState = {
       loaded: false,
@@ -422,8 +592,10 @@ function initMap() {
       types: { VOR: false, NDB: false, DME: false },
     };
   var aptData = [],
+    aptByIdent = {},
     rwyByApt = {},
     freqByApt = {},
+    pendingAptLookup = null,
     aptState = {
       loaded: false,
       loading: false,
@@ -452,13 +624,19 @@ function initMap() {
   var aptPopupOpen = false;
 
   // ---- Layers ----
-  var radiusCircle = L.polygon([], {
-    color: "#4f6df5",
-    weight: 2,
-    fillColor: "#4f6df5",
-    fillOpacity: 0.12,
+  // One geodesic circle per regime, keyed by regime key. Drawn in REGIMES order
+  // (max, opt, end) so the typically-smaller best-endurance circle sits on top.
+  var rangeCircles = {};
+  REGIMES.forEach(function (rg) {
+    rangeCircles[rg.key] = L.polygon([], {
+      color: rg.color,
+      weight: 2,
+      fillColor: rg.color,
+      fillOpacity: 0.1,
+    });
   });
-  var radiusMarker = L.marker(state.radius.center, { icon: pinIcon, draggable: true });
+  var rangeLabelLayer = L.layerGroup();
+  var centerMarker = L.marker(state.ranges.center, { icon: pinIcon, draggable: true });
   var routeLinesGroup = L.layerGroup();
   var routeMarkersGroup = L.layerGroup();
   var routeCircle = L.polygon([], {
@@ -470,9 +648,10 @@ function initMap() {
   var navaidLayer = L.layerGroup();
   var airportLayer = L.layerGroup();
   var waypointLayer = L.layerGroup();
-  radiusMarker.on("drag", function (e) {
-    state.radius.center = e.target.getLatLng();
-    renderRadius();
+  centerMarker.on("drag", function (e) {
+    state.ranges.center = e.target.getLatLng();
+    clearAirportCode();
+    renderRanges();
   });
 
   // ---- DOM ----
@@ -481,24 +660,85 @@ function initMap() {
     $slider = document.getElementById("radius-slider");
   var $speedInput = document.getElementById("speed-input"),
     $speedUnit = document.getElementById("speed-unit");
-  var $radiusStats = document.getElementById("radius-stats"),
+  var $rangesStats = document.getElementById("ranges-stats"),
     $routeStats = document.getElementById("route-stats");
   var $crValue = document.getElementById("current-radius-value"),
     $crTime = document.getElementById("current-radius-time"),
     $readout = document.getElementById("coord-readout");
   var rcLabel = document.getElementById("rc-label"),
-    radiusView = document.getElementById("radius-view"),
+    rangesControl = document.getElementById("ranges-control"),
+    radiusControl = document.getElementById("radius-control"),
+    rangesView = document.getElementById("ranges-view"),
     routeView = document.getElementById("route-view");
-  var segRadius = document.getElementById("mode-radius"),
-    segRoute = document.getElementById("mode-route");
+  var segRanges = document.getElementById("mode-ranges"),
+    segPlan = document.getElementById("mode-plan");
   var presetWrap = document.getElementById("presets"),
     $navStatus = document.getElementById("nav-status");
   var $routePoints = document.getElementById("route-points");
   var $aptStatus = document.getElementById("apt-status");
   var $wptStatus = document.getElementById("wpt-status");
+  // Ranges-mode inputs.
+  var $airport = document.getElementById("airport-input"),
+    $airportStatus = document.getElementById("airport-status");
+  var $fuel = document.getElementById("fuel-input"),
+    $fuelUnit = document.getElementById("fuel-unit"),
+    $reserve = document.getElementById("reserve-toggle"),
+    $rngSpeedUnit = document.getElementById("rng-speed-unit"),
+    $rngDistUnit = document.getElementById("rng-dist-unit");
+  var rngSpeedEl = {
+      max: document.getElementById("rng-max-speed"),
+      opt: document.getElementById("rng-opt-speed"),
+      end: document.getElementById("rng-end-speed"),
+    },
+    rngConsEl = {
+      max: document.getElementById("rng-max-cons"),
+      opt: document.getElementById("rng-opt-cons"),
+      end: document.getElementById("rng-end-cons"),
+    };
 
   function row(k, v) {
     return '<div class="stat-line"><span class="k">' + k + '</span><span class="v">' + v + "</span></div>";
+  }
+
+  // ---- Persistence ----
+  function saveState() {
+    try {
+      var c = map.getCenter();
+      localStorage.setItem(
+        SAVE_KEY,
+        JSON.stringify({
+          v: SAVE_VERSION,
+          view: { lat: c.lat, lng: c.lng, zoom: map.getZoom() },
+          mode: state.mode,
+          unit: state.unit,
+          speedInput: $speedInput.value,
+          speedUnit: state.speedUnit,
+          ranges: {
+            center: { lat: state.ranges.center.lat, lng: state.ranges.center.lng },
+            airport: state.ranges.airport,
+            fuel: state.ranges.fuel,
+            fuelUnit: state.ranges.fuelUnit,
+            speedUnit: state.ranges.speedUnit,
+            distUnit: state.ranges.distUnit,
+            reserve: state.ranges.reserve,
+            profiles: state.ranges.profiles,
+          },
+          route: {
+            budgetM: state.route.budgetM,
+            points: state.route.points.map(function (p) {
+              return { lat: p.lat, lng: p.lng };
+            }),
+            info: state.route.info,
+          },
+          layers: { nav: navState.types, apt: aptState.types, wpt: wptState.enabled },
+        })
+      );
+    } catch (e) {}
+  }
+  var saveTimer;
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveState, 300);
   }
 
   // ---- Accessors ----
@@ -508,12 +748,13 @@ function initMap() {
     for (var i = 0; i < p.length - 1; i++) s += haversineM(p[i], p[i + 1]);
     return s;
   }
+  // The shared slider/input/presets control only drives the Flight-plan budget now
+  // (the Ranges mode has its own fuel-based control), so these target the route.
   function activeRadiusM() {
-    return state.mode === "radius" ? state.radius.radiusM : state.route.budgetM;
+    return state.route.budgetM;
   }
   function setActiveRadiusM(m) {
-    if (state.mode === "radius") state.radius.radiusM = m;
-    else state.route.budgetM = Math.max(m, routeUsedM());
+    state.route.budgetM = Math.max(m, routeUsedM());
   }
   function metersToSlider(m) {
     var t = (Math.log(m) - Math.log(SLIDER_MIN)) / (Math.log(SLIDER_MAX) - Math.log(SLIDER_MIN));
@@ -580,27 +821,132 @@ function initMap() {
       });
   }
 
-  // ---- Radius render ----
-  function renderRadius() {
-    radiusMarker.setLatLng(state.radius.center);
-    radiusCircle.setLatLngs(geodesicRing(state.radius.center, state.radius.radiusM, 256));
-    var rM = state.radius.radiusM,
-      km = rM / 1000,
-      area = capArea(rM) / 1e6;
-    $radiusStats.innerHTML =
-      row("Centre", fmtCoord(state.radius.center)) +
-      row(
-        "Radius",
-        fmt(km, km < 100 ? 1 : 0) +
-          " km · " +
-          fmt(rM / UNITS.mi, 0) +
-          " mi · " +
-          fmt(rM / UNITS.nmi, 0) +
-          " nmi"
-      ) +
-      (state.speedMS > 0 ? row("Flight time", fmtTime(rM / state.speedMS)) : "") +
-      row("Diameter", fmt(km * 2, km < 100 ? 1 : 0) + " km") +
-      row("Cap area", fmt(area, 0) + " km²");
+  // ---- Ranges render ----
+  // Read the fuel/performance inputs from the DOM into state.
+  function readRangesInputs() {
+    var rg = state.ranges;
+    rg.fuel = parseFloat($fuel.value);
+    rg.fuelUnit = $fuelUnit.value;
+    rg.speedUnit = $rngSpeedUnit.value;
+    rg.distUnit = $rngDistUnit.value;
+    rg.reserve = $reserve.checked;
+    ["max", "opt", "end"].forEach(function (k) {
+      rg.profiles[k] = {
+        speed: parseFloat(rngSpeedEl[k].value),
+        cons: parseFloat(rngConsEl[k].value),
+      };
+    });
+  }
+  // Push state.ranges back into the DOM inputs (used on init after restore).
+  function syncRangesInputs() {
+    var rg = state.ranges;
+    $airport.value = rg.airport || "";
+    $fuel.value = rg.fuel;
+    $fuelUnit.value = rg.fuelUnit;
+    $reserve.checked = rg.reserve;
+    $rngSpeedUnit.value = rg.speedUnit;
+    $rngDistUnit.value = rg.distUnit;
+    ["max", "opt", "end"].forEach(function (k) {
+      rngSpeedEl[k].value = rg.profiles[k].speed;
+      rngConsEl[k].value = rg.profiles[k].cons;
+    });
+    var label = rg.fuelUnit + "/h";
+    Array.prototype.forEach.call(document.querySelectorAll(".rng-cons-unit"), function (el) {
+      el.textContent = label;
+    });
+  }
+
+  // ---- Airport-code centre lookup ----
+  function setAirportStatus(msg) {
+    $airportStatus.textContent = msg;
+  }
+  // The centre was moved by hand (map click / pin drag): forget the airport code.
+  function clearAirportCode() {
+    state.ranges.airport = "";
+    if ($airport.value) $airport.value = "";
+    setAirportStatus("Type an airport code to centre the circles there.");
+  }
+  function applyAirportCode(code, fromUser) {
+    code = (code || "").trim().toUpperCase();
+    state.ranges.airport = code;
+    if (!code) {
+      setAirportStatus("Type an airport code to centre the circles there.");
+      return;
+    }
+    if (!/^[A-Z0-9]{3,4}$/.test(code)) {
+      setAirportStatus("Enter a 3–4 character ICAO code.");
+      return;
+    }
+    if (!aptState.loaded) {
+      pendingAptLookup = code;
+      setAirportStatus("Loading airport database…");
+      if (!aptState.loading) loadAirports();
+      return;
+    }
+    var a = aptByIdent[code];
+    if (a) {
+      state.ranges.center = L.latLng(a.lat, a.lng);
+      renderRanges();
+      if (fromUser) map.panTo(state.ranges.center);
+      setAirportStatus(code + (a.name ? " · " + a.name : ""));
+    } else {
+      setAirportStatus("No airport “" + code + "” found.");
+    }
+  }
+  // Usable endurance (hours) for a regime after the optional 40-min reserve.
+  function regimeEnduranceH(p) {
+    var rg = state.ranges;
+    if (!(rg.fuel > 0) || !(p.cons > 0)) return 0;
+    var h = rg.fuel / p.cons - (rg.reserve ? RESERVE_MIN / 60 : 0);
+    return h > 0 ? h : 0;
+  }
+  // Full one-way range (metres) for a regime.
+  function regimeRangeM(p) {
+    if (!(p.speed > 0)) return 0;
+    return regimeEnduranceH(p) * 3600 * p.speed * SPEED_UNITS[state.ranges.speedUnit];
+  }
+  function renderRanges() {
+    var rg = state.ranges;
+    centerMarker.setLatLng(rg.center);
+    rangeLabelLayer.clearLayers();
+    var distU = UNITS[rg.distUnit] || 1852;
+    var stats = row("Centre", fmtCoord(rg.center));
+    var drawn = [];
+    REGIMES.forEach(function (def) {
+      var p = rg.profiles[def.key],
+        rM = regimeRangeM(p);
+      if (rM > 0) {
+        var ring = geodesicRing(rg.center, rM, 256);
+        rangeCircles[def.key].setLatLngs(ring);
+        // ring[0] is the northmost point (bearing 0) — labels stack vertically.
+        rangeLabelLayer.addLayer(
+          rangeTimeMarker(ring[0], fmtTime(regimeEnduranceH(p) * 3600), def.key)
+        );
+        drawn.push({ key: def.key, rM: rM });
+      } else {
+        rangeCircles[def.key].setLatLngs([]);
+      }
+      var key = '<span class="range-swatch rng-' + def.key + '"></span>' + def.label;
+      var val =
+        rM > 0
+          ? fmt(rM / distU, rM / distU < 100 ? 1 : 0) +
+            " " +
+            rg.distUnit +
+            " · " +
+            fmtTime(regimeEnduranceH(p) * 3600)
+          : "—";
+      stats += row(key, val);
+    });
+    // Keep the smallest circle's outline on top so all three remain visible.
+    drawn.sort(function (a, b) {
+      return b.rM - a.rM;
+    });
+    drawn.forEach(function (d) {
+      var c = rangeCircles[d.key];
+      if (map.hasLayer(c)) c.bringToFront();
+    });
+    $rangesStats.innerHTML = stats;
+    scheduleSave();
   }
 
   // ---- Route render ----
@@ -658,6 +1004,7 @@ function initMap() {
       row("Start", pts.length ? fmtCoord(pts[0]) : "—");
 
     renderRoutePointsTable();
+    scheduleSave();
   }
 
   function renderRoutePointsTable() {
@@ -1101,12 +1448,13 @@ function initMap() {
 
   function ingestAirports(rows) {
     aptData = [];
+    aptByIdent = {};
     rows.forEach(function (r) {
       if (!APT_TYPES[r.type]) return;
       var lat = parseFloat(r.latitude_deg),
         lng = parseFloat(r.longitude_deg);
       if (isNaN(lat) || isNaN(lng)) return;
-      aptData.push({
+      var a = {
         ident: r.ident || "?",
         name: r.name || "",
         type: r.type || "",
@@ -1116,7 +1464,10 @@ function initMap() {
         iata: r.iata_code || "",
         muni: r.municipality || "",
         country: r.iso_country || "",
-      });
+      };
+      aptData.push(a);
+      // Index by ICAO/GPS ident for the Ranges-tab centre lookup.
+      if (r.ident) aptByIdent[r.ident.toUpperCase()] = a;
     });
   }
   function ingestRunways(rows) {
@@ -1183,6 +1534,11 @@ function initMap() {
           aptState.loaded = true;
           aptState.loading = false;
           renderAirports();
+          if (pendingAptLookup) {
+            var code = pendingAptLookup;
+            pendingAptLookup = null;
+            applyAirportCode(code, true);
+          }
         }
       };
     }
@@ -1317,36 +1673,44 @@ function initMap() {
   }
 
   function render() {
-    if (state.mode === "radius") renderRadius();
+    if (state.mode === "ranges") renderRanges();
     else redrawRouteGeometry();
   }
 
   function setMode(m) {
     state.mode = m;
-    if (m === "radius") {
-      map.addLayer(radiusCircle);
-      map.addLayer(radiusMarker);
+    if (m === "ranges") {
+      REGIMES.forEach(function (rg) {
+        map.addLayer(rangeCircles[rg.key]);
+      });
+      map.addLayer(rangeLabelLayer);
+      map.addLayer(centerMarker);
       map.removeLayer(routeCircle);
       map.removeLayer(routeLinesGroup);
       map.removeLayer(routeMarkersGroup);
-      rcLabel.textContent = "Radius";
-      radiusView.style.display = "";
+      rangesControl.style.display = "";
+      radiusControl.style.display = "none";
+      rangesView.style.display = "";
       routeView.style.display = "none";
-      segRadius.classList.add("active");
-      segRoute.classList.remove("active");
-      syncControls();
-      renderRadius();
+      segRanges.classList.add("active");
+      segPlan.classList.remove("active");
+      renderRanges();
     } else {
-      map.removeLayer(radiusCircle);
-      map.removeLayer(radiusMarker);
+      REGIMES.forEach(function (rg) {
+        map.removeLayer(rangeCircles[rg.key]);
+      });
+      map.removeLayer(rangeLabelLayer);
+      map.removeLayer(centerMarker);
       map.addLayer(routeCircle);
       map.addLayer(routeLinesGroup);
       map.addLayer(routeMarkersGroup);
       rcLabel.textContent = "Budget (total range)";
-      radiusView.style.display = "none";
+      rangesControl.style.display = "none";
+      radiusControl.style.display = "";
+      rangesView.style.display = "none";
       routeView.style.display = "";
-      segRoute.classList.add("active");
-      segRadius.classList.remove("active");
+      segPlan.classList.add("active");
+      segRanges.classList.remove("active");
       syncControls();
       rebuildRouteMarkers();
       redrawRouteGeometry();
@@ -1354,6 +1718,7 @@ function initMap() {
     if (navAnyOn()) map.addLayer(navaidLayer); // keep navaids above on top
     if (aptAnyOn()) map.addLayer(airportLayer); // and airports on top
     if (wptState.enabled) map.addLayer(waypointLayer); // and waypoints on top
+    scheduleSave();
   }
 
   function applySpeedChange() {
@@ -1396,11 +1761,24 @@ function initMap() {
     state.speedUnit = $speedUnit.value;
     applySpeedChange();
   }
-  function onModeRadius() {
-    setMode("radius");
+  function onModeRanges() {
+    setMode("ranges");
   }
-  function onModeRoute() {
-    setMode("route");
+  function onModePlan() {
+    setMode("plan");
+  }
+  // Ranges-mode control: re-read inputs and redraw on any change.
+  function onRangesInput() {
+    readRangesInputs();
+    renderRanges();
+  }
+  function onFuelUnitChange() {
+    readRangesInputs();
+    var label = $fuelUnit.value + "/h";
+    Array.prototype.forEach.call(document.querySelectorAll(".rng-cons-unit"), function (el) {
+      el.textContent = label;
+    });
+    renderRanges();
   }
   function onUndo() {
     if (state.route.points.length) {
@@ -1426,6 +1804,7 @@ function initMap() {
       map.removeLayer(navaidLayer);
       setNavStatus("Navaids hidden.");
     }
+    scheduleSave();
   }
   function setAptGroup(grp, on) {
     aptState.types[grp] = on;
@@ -1437,6 +1816,7 @@ function initMap() {
       map.removeLayer(airportLayer);
       setAptStatus("Airports hidden.");
     }
+    scheduleSave();
   }
   function setWptEnabled(on) {
     wptState.enabled = on;
@@ -1448,12 +1828,13 @@ function initMap() {
       map.removeLayer(waypointLayer);
       setWptStatus("Waypoints hidden.");
     }
+    scheduleSave();
   }
   function onReset() {
     map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
-    if (state.mode === "radius") {
-      state.radius.center = L.latLng(DEFAULT_CENTER[0], DEFAULT_CENTER[1]);
-      renderRadius();
+    if (state.mode === "ranges") {
+      state.ranges.center = L.latLng(DEFAULT_CENTER[0], DEFAULT_CENTER[1]);
+      renderRanges();
     }
   }
   var panel = document.getElementById("panel");
@@ -1461,6 +1842,88 @@ function initMap() {
   function onCollapse() {
     panel.classList.toggle("collapsed");
     collapseBtn.textContent = panel.classList.contains("collapsed") ? "+" : "−";
+  }
+  var layersPanel = document.getElementById("layers-panel");
+  var layersCollapseBtn = document.getElementById("layers-collapse-btn");
+  function onLayersCollapse() {
+    layersPanel.classList.toggle("collapsed");
+    layersCollapseBtn.textContent = layersPanel.classList.contains("collapsed") ? "+" : "−";
+  }
+
+  // ---- Draggable panels ----
+  // Both floating panels can be repositioned by dragging their header bar; the
+  // position is remembered across reloads via localStorage. Pointer Events give
+  // mouse + touch in one path, and setPointerCapture keeps tracking off-panel.
+  function clampPanel(panel, left, top) {
+    var maxX = Math.max(0, window.innerWidth - panel.offsetWidth);
+    var maxY = Math.max(0, window.innerHeight - panel.offsetHeight);
+    return {
+      left: Math.max(0, Math.min(left, maxX)),
+      top: Math.max(0, Math.min(top, maxY)),
+    };
+  }
+  function placePanel(panel, left, top) {
+    panel.style.left = left + "px";
+    panel.style.top = top + "px";
+    panel.style.right = "auto";
+  }
+  function restorePanelPosition(panel, key) {
+    var saved;
+    try {
+      saved = JSON.parse(localStorage.getItem(key) || "null");
+    } catch (e) {
+      saved = null;
+    }
+    if (!saved || typeof saved.left !== "number" || typeof saved.top !== "number") return;
+    var c = clampPanel(panel, saved.left, saved.top);
+    placePanel(panel, c.left, c.top);
+  }
+  function makeDraggable(panel, handle, key) {
+    var dragging = false,
+      startX = 0,
+      startY = 0,
+      startLeft = 0,
+      startTop = 0;
+    function onDown(e) {
+      if (e.button !== 0 || (e.target.closest && e.target.closest("button"))) return;
+      var rect = panel.getBoundingClientRect();
+      startX = e.clientX;
+      startY = e.clientY;
+      startLeft = rect.left;
+      startTop = rect.top;
+      placePanel(panel, rect.left, rect.top);
+      dragging = true;
+      panel.classList.add("panel-dragging");
+      handle.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    }
+    function onMove(e) {
+      if (!dragging) return;
+      var c = clampPanel(panel, startLeft + (e.clientX - startX), startTop + (e.clientY - startY));
+      placePanel(panel, c.left, c.top);
+    }
+    function onUp(e) {
+      if (!dragging) return;
+      dragging = false;
+      panel.classList.remove("panel-dragging");
+      try {
+        handle.releasePointerCapture(e.pointerId);
+      } catch (_) {}
+      try {
+        var rect = panel.getBoundingClientRect();
+        localStorage.setItem(key, JSON.stringify({ left: rect.left, top: rect.top }));
+      } catch (_) {}
+    }
+    handle.addEventListener("pointerdown", onDown);
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
+    return function () {
+      handle.removeEventListener("pointerdown", onDown);
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+    };
   }
 
   $input.addEventListener("input", onInputInput);
@@ -1470,8 +1933,25 @@ function initMap() {
   $speedInput.addEventListener("input", applySpeedChange);
   $speedUnit.addEventListener("change", onSpeedUnitChange);
 
-  segRadius.onclick = onModeRadius;
-  segRoute.onclick = onModeRoute;
+  // Ranges-mode inputs.
+  $airport.addEventListener("input", function () {
+    applyAirportCode($airport.value, true);
+  });
+  $airport.addEventListener("change", function () {
+    applyAirportCode($airport.value, true);
+  });
+  $fuel.addEventListener("input", onRangesInput);
+  $fuelUnit.addEventListener("change", onFuelUnitChange);
+  $reserve.addEventListener("change", onRangesInput);
+  $rngSpeedUnit.addEventListener("change", onRangesInput);
+  $rngDistUnit.addEventListener("change", onRangesInput);
+  ["max", "opt", "end"].forEach(function (k) {
+    rngSpeedEl[k].addEventListener("input", onRangesInput);
+    rngConsEl[k].addEventListener("input", onRangesInput);
+  });
+
+  segRanges.onclick = onModeRanges;
+  segPlan.onclick = onModePlan;
 
   document.getElementById("undo-btn").onclick = onUndo;
   document.getElementById("clear-btn").onclick = onClear;
@@ -1571,8 +2051,8 @@ function initMap() {
       var aBtn = node.querySelector(".apt-pop-btn");
       if (aBtn)
         aBtn.onclick = function () {
-          if (state.mode !== "route") {
-            toast("Switch to Route mode to add points");
+          if (state.mode !== "plan") {
+            toast("Switch to Flight plan mode to add points");
             return;
           }
           var a = src._apt;
@@ -1594,8 +2074,8 @@ function initMap() {
       var wBtn = node.querySelector(".wpt-pop-btn");
       if (wBtn)
         wBtn.onclick = function () {
-          if (state.mode !== "route") {
-            toast("Switch to Route mode to add points");
+          if (state.mode !== "plan") {
+            toast("Switch to Flight plan mode to add points");
             return;
           }
           var w = src._wpt;
@@ -1616,8 +2096,8 @@ function initMap() {
     var btn = node.querySelector(".nav-pop-btn");
     if (!btn) return;
     btn.onclick = function () {
-      if (state.mode !== "route") {
-        toast("Switch to Route mode to add points");
+      if (state.mode !== "plan") {
+        toast("Switch to Flight plan mode to add points");
         return;
       }
       var ok = tryAddRoutePoint(L.latLng(src._nav.lat, src._nav.lng), {
@@ -1635,9 +2115,10 @@ function initMap() {
   });
 
   map.on("click", function (e) {
-    if (state.mode === "radius") {
-      state.radius.center = e.latlng;
-      renderRadius();
+    if (state.mode === "ranges") {
+      state.ranges.center = e.latlng;
+      clearAirportCode();
+      renderRanges();
     } else tryAddRoutePoint(e.latlng);
   });
   map.on("mousemove", function (e) {
@@ -1651,6 +2132,7 @@ function initMap() {
     // Skip while an airport popup is open: re-rendering would clearLayers() and close it.
     if (aptAnyOn() && !aptPopupOpen) renderAirports();
     if (wptState.enabled) renderWaypoints();
+    scheduleSave();
   });
   map.on("popupclose", function (e) {
     if (e.popup && e.popup._source && e.popup._source._apt) {
@@ -1661,10 +2143,49 @@ function initMap() {
 
   document.getElementById("reset").onclick = onReset;
   collapseBtn.onclick = onCollapse;
+  layersCollapseBtn.onclick = onLayersCollapse;
 
   // ---- Init ----
+  // Restore persisted state (saved was read at the top). Drive the existing
+  // setters so layer data lazy-loads and the checkboxes reflect what's enabled.
+  if (saved) {
+    // Speed first: recreates the "h" unit option before syncControls runs.
+    if (saved.speedInput != null && saved.speedInput !== "") {
+      $speedInput.value = saved.speedInput;
+      $speedUnit.value = state.speedUnit;
+      var savedRaw = parseFloat(saved.speedInput);
+      state.speedMS =
+        !isNaN(savedRaw) && savedRaw > 0 ? savedRaw * SPEED_UNITS[state.speedUnit] : 0;
+      setHourOption(state.speedMS > 0);
+    }
+    var L_ = saved.layers || {};
+    ["VOR", "NDB", "DME"].forEach(function (cat) {
+      if (L_.nav && L_.nav[cat]) {
+        var cb = document.querySelector('.lyr-nav[data-cat="' + cat + '"]');
+        if (cb) cb.checked = true;
+        setNavType(cat, true);
+      }
+    });
+    ["small", "medium", "large"].forEach(function (grp) {
+      if (L_.apt && L_.apt[grp]) {
+        var cb = document.querySelector('.lyr-apt[data-grp="' + grp + '"]');
+        if (cb) cb.checked = true;
+        setAptGroup(grp, true);
+      }
+    });
+    if (L_.wpt) {
+      var wcb = document.getElementById("wpt-enable");
+      if (wcb) wcb.checked = true;
+      setWptEnabled(true);
+    }
+  }
   rebuildPresets();
-  setMode("radius");
+  syncRangesInputs();
+  setMode(state.mode);
+  var disposeDragPanel = makeDraggable(panel, document.getElementById("panel-header"), "simmap.pos.panel");
+  var disposeDragLayers = makeDraggable(layersPanel, document.getElementById("layers-header"), "simmap.pos.layers");
+  restorePanelPosition(panel, "simmap.pos.panel");
+  restorePanelPosition(layersPanel, "simmap.pos.layers");
   var sizeTimer = setTimeout(function () {
     map.invalidateSize();
   }, 80);
@@ -1673,6 +2194,9 @@ function initMap() {
   return function cleanup() {
     clearTimeout(sizeTimer);
     clearTimeout(toastTimer);
+    clearTimeout(saveTimer);
+    disposeDragPanel();
+    disposeDragLayers();
     map.remove();
   };
 }
