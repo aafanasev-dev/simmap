@@ -523,14 +523,18 @@ function initMap() {
       iconAnchor: [7.5, 7.5],
     });
   }
-  function legLabelMarker(latlng, deg) {
+  function legLabelMarker(latlng, deg, distM) {
     var txt = ("00" + (Math.round(deg) % 360)).slice(-3) + "°";
+    var fu = UNITS[state.unit] || 1000,
+      uName = UNITS[state.unit] ? state.unit : "km",
+      d = distM / fu;
+    txt += " · " + fmt(d, d < 100 ? 1 : 0) + " " + uName;
     return L.marker(latlng, {
       icon: L.divIcon({
         className: "",
         html: '<div class="leg-label">' + txt + "</div>",
-        iconSize: [34, 16],
-        iconAnchor: [17, 8],
+        iconSize: [82, 16],
+        iconAnchor: [41, 8],
       }),
       interactive: false,
       keyboard: false,
@@ -975,9 +979,10 @@ function initMap() {
     for (var i = 0; i < pts.length - 1; i++) {
       var line = geodesicLine(pts[i], pts[i + 1]);
       routeLinesGroup.addLayer(L.polyline(line, { color: color, weight: 3, opacity: 0.9 }));
-      if (haversineM(pts[i], pts[i + 1]) > 1) {
+      var d = haversineM(pts[i], pts[i + 1]);
+      if (d > 1) {
         var mid = line[Math.floor(line.length / 2)]; // a point on the curve
-        routeLinesGroup.addLayer(legLabelMarker(mid, bearingDeg(pts[i], pts[i + 1])));
+        routeLinesGroup.addLayer(legLabelMarker(mid, bearingDeg(pts[i], pts[i + 1]), d));
       }
     }
 
