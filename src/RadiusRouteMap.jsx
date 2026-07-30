@@ -255,12 +255,22 @@ export default function RadiusRouteMap() {
             <div style={{ marginTop: 14 }}>
               <div className="field-label">Wind</div>
               <div className="wind-block">
-                <div className="wind-dial" id="glide-wind-dial" title="Drag to set the direction the wind blows toward">
-                  <span className="wind-tick wt-n">N</span>
-                  <span className="wind-tick wt-e">E</span>
-                  <span className="wind-tick wt-s">S</span>
-                  <span className="wind-tick wt-w">W</span>
-                  <span className="wind-needle" id="glide-wind-needle"></span>
+                <div className="wind-dial-col">
+                  <div className="wind-dial" id="glide-wind-dial" title="Drag to set the direction the wind blows toward">
+                    <span className="wind-tick wt-n">N</span>
+                    <span className="wind-tick wt-e">E</span>
+                    <span className="wind-tick wt-s">S</span>
+                    <span className="wind-tick wt-w">W</span>
+                    <svg className="wind-arrow" viewBox="0 0 100 100">
+                      <g id="glide-wind-arrow" stroke="#f59e0b" strokeWidth="6" strokeLinecap="round" fill="#f59e0b">
+                        <line x1="50" y1="18" x2="50" y2="82" />
+                        <polygon points="50,8 41,26 59,26" stroke="none" />
+                        <line x1="50" y1="82" x2="42" y2="94" />
+                        <line x1="50" y1="82" x2="58" y2="94" />
+                        <circle cx="50" cy="50" r="5" stroke="#fff" strokeWidth="2" />
+                      </g>
+                    </svg>
+                  </div>
                   <span className="wind-dir-readout" id="glide-wind-dir">
                     0°
                   </span>
@@ -895,9 +905,9 @@ function initMap() {
   var airportLayer = L.layerGroup();
   var waypointLayer = L.layerGroup();
   var glideCircle = L.polygon([], {
-    color: "#f59e0b",
+    color: "#4f6df5",
     weight: 2,
-    fillColor: "#f59e0b",
+    fillColor: "#4f6df5",
     fillOpacity: 0.12,
   });
   var glideMarker = L.marker(state.glide.center, { icon: glidePinIcon, draggable: true });
@@ -953,7 +963,7 @@ function initMap() {
     $glideSpeed = document.getElementById("glide-speed-input"),
     $glideSpeedUnit = document.getElementById("glide-speed-unit"),
     $glideWindDial = document.getElementById("glide-wind-dial"),
-    $glideWindNeedle = document.getElementById("glide-wind-needle"),
+    $glideWindArrow = document.getElementById("glide-wind-arrow"),
     $glideWindDir = document.getElementById("glide-wind-dir"),
     $glideWindSpeed = document.getElementById("glide-wind-speed-input"),
     $glideWindSpeedUnit = document.getElementById("glide-wind-speed-unit"),
@@ -1310,7 +1320,8 @@ function initMap() {
     if (g.qmode === "polar") renderPolarChart();
   }
   function setWindNeedle(deg) {
-    $glideWindNeedle.style.transform = "translate(-50%, -100%) rotate(" + deg + "deg)";
+    // Rotate the arrow about the dial centre (viewBox 0..100, centre 50,50).
+    $glideWindArrow.setAttribute("transform", "rotate(" + deg + " 50 50)");
     $glideWindDir.textContent = Math.round(((deg % 360) + 360) % 360) + "°";
   }
   function renderGlide() {
@@ -1374,7 +1385,16 @@ function initMap() {
   // Standard glider polar: airspeed on x (km/h), sink on y increasing downward
   // (m/s). A dashed line from the origin to the best-glide (tangent) point, and a
   // solid amber line to the operating point at the current speed. Theme-aware SVG.
-  var polarGeom = null; // pixel↔speed mapping for click-to-set-speed
+  var polarGeom = null, // pixel↔data mapping for click-to-set-speed and zoom/pan
+    polarView = null, // { vMin, vMax, sMin, sMax } visible data domain (null = full)
+    polarSvgEl = null; // the current <svg> (its rect maps exactly to the viewBox)
+  function polarFullExtent(pts) {
+    var maxS = 0;
+    pts.forEach(function (p) {
+      if (p.sink > maxS) maxS = p.sink;
+    });
+    return { vMin: 0, vMax: pts[pts.length - 1].vKmh * 1.05, sMin: 0, sMax: maxS * 1.05 };
+  }
   function renderPolarChart() {
     var g = state.glide,
       pts = parsePolar(gliderById(g.gliderId));
@@ -1391,19 +1411,19 @@ function initMap() {
       mB = 20,
       pw = W - mL - mR,
       ph = H - mT - mB;
-    var maxV = pts[pts.length - 1].vKmh * 1.05,
-      maxS = 0;
-    pts.forEach(function (p) {
-      if (p.sink > maxS) maxS = p.sink;
-    });
-    maxS *= 1.05;
+    if (!polarView) polarView = polarFullExtent(pts);
+    var vMin = polarView.vMin,
+      vMax = polarView.vMax,
+      sMin = polarView.sMin,
+      sMax = polarView.sMax;
     function X(vKmh) {
-      return mL + (vKmh / maxV) * pw;
+      return mL + ((vKmh - vMin) / (vMax - vMin)) * pw;
     }
     function Y(sink) {
-      return mT + (sink / maxS) * ph;
+      return mT + ((sink - sMin) / (sMax - sMin)) * ph;
     }
-    polarGeom = { W: W, mL: mL, pw: pw, maxV: maxV, minKmh: pts[0].vKmh, maxKmh: pts[pts.length - 1].vKmh };
+    polarGeom = { W: W, H: H, mL: mL, mT: mT, pw: pw, ph: ph, vMin: vMin, vMax: vMax, sMin: sMin, sMax: sMax,
+      minKmh: pts[0].vKmh, maxKmh: pts[pts.length - 1].vKmh };
 
     var op = polarAt(pts, g.speedMS),
       opV = Math.max(pts[0].vKmh, Math.min(pts[pts.length - 1].vKmh, g.speedMS * 3.6)),
@@ -1415,19 +1435,24 @@ function initMap() {
       opCol = "#f59e0b",
       bestCol = "#16a34a";
     var s = '<svg viewBox="0 0 ' + W + " " + H + '" width="100%" preserveAspectRatio="xMidYMid meet" class="polar-svg">';
+    s += '<defs><clipPath id="pclip"><rect x="' + mL + '" y="' + mT + '" width="' + pw + '" height="' + ph + '"/></clipPath></defs>';
     // Axes (origin at top-left of plot).
     s += '<line x1="' + mL + '" y1="' + mT + '" x2="' + mL + '" y2="' + (mT + ph) + '" stroke="' + axisCol + '" stroke-width="1"/>';
     s += '<line x1="' + mL + '" y1="' + mT + '" x2="' + (mL + pw) + '" y2="' + mT + '" stroke="' + axisCol + '" stroke-width="1"/>';
     // Axis labels.
     s += '<text x="' + (mL + pw) + '" y="' + (mT + ph + 14) + '" fill="' + axisCol + '" font-size="9" text-anchor="end">km/h</text>';
     s += '<text x="' + (mL - 4) + '" y="' + (mT + 8) + '" fill="' + axisCol + '" font-size="9" text-anchor="end">m/s</text>';
-    // x ticks at rounded speeds.
-    var step = maxV > 180 ? 50 : 25;
-    for (var v = step; v < maxV; v += step) {
+    // x ticks at rounded speeds within the visible span (step scales with zoom).
+    var span = vMax - vMin,
+      step = span > 260 ? 50 : span > 120 ? 25 : span > 50 ? 10 : 5;
+    for (var v = Math.ceil(vMin / step) * step; v < vMax; v += step) {
+      if (v <= vMin) continue;
       var xx = X(v);
       s += '<line x1="' + xx + '" y1="' + mT + '" x2="' + xx + '" y2="' + (mT + 4) + '" stroke="' + axisCol + '" stroke-width="1"/>';
       s += '<text x="' + xx + '" y="' + (mT + ph + 14) + '" fill="' + axisCol + '" font-size="8.5" text-anchor="middle">' + v + "</text>";
     }
+    // Data marks clipped to the plot rect (so pan/zoom don't spill over the axes).
+    s += '<g clip-path="url(#pclip)">';
     // Polar curve.
     var d = pts
       .map(function (p, i) {
@@ -1441,8 +1466,9 @@ function initMap() {
     // Origin → operating point (solid amber) and its marker.
     s += '<line x1="' + X(0) + '" y1="' + Y(0) + '" x2="' + X(opV) + '" y2="' + Y(op.sink) + '" stroke="' + opCol + '" stroke-width="2"/>';
     s += '<circle cx="' + X(opV) + '" cy="' + Y(op.sink) + '" r="4.5" fill="' + opCol + '" stroke="#fff" stroke-width="1.5"/>';
-    s += "</svg>";
+    s += "</g></svg>";
     $glidePolarChart.innerHTML = s;
+    polarSvgEl = $glidePolarChart.querySelector("svg");
 
     $glidePolarReadout.innerHTML =
       "At <b>" +
@@ -1458,7 +1484,8 @@ function initMap() {
       ":1 at " +
       Math.round(best.vKmh) +
       " km/h." +
-      (op.clamped ? " <span style=\"color:var(--danger)\">Speed outside polar range — clamped.</span>" : "");
+      (op.clamped ? " <span style=\"color:var(--danger)\">Speed outside polar range — clamped.</span>" : "") +
+      '<br/><span style="opacity:.7">Scroll to zoom · drag to pan · double-click to reset · click to set speed.</span>';
   }
 
   function renderRanges() {
@@ -2372,21 +2399,102 @@ function initMap() {
   }
   function onGlideGliderChange() {
     state.glide.gliderId = $glideGliderSelect.value;
+    polarView = null; // reset zoom for the new glider's range
     renderGlide();
     scheduleSave();
   }
-  // Click the polar chart to set the airspeed (pixel-x → km/h → m/s).
-  function onPolarChartClick(e) {
-    if (!polarGeom) return;
-    var rect = $glidePolarChart.getBoundingClientRect();
-    if (!rect.width) return;
-    var vbX = ((e.clientX - rect.left) / rect.width) * polarGeom.W;
-    var kmh = ((vbX - polarGeom.mL) / polarGeom.pw) * polarGeom.maxV;
-    kmh = Math.max(polarGeom.minKmh, Math.min(polarGeom.maxKmh, kmh));
-    state.glide.speedMS = (kmh / 3.6);
+  // Convert a client x/y over the chart to data coords (km/h, m/s) via the current
+  // view. Returns null if the chart hasn't been laid out yet.
+  function polarDataAt(clientX, clientY) {
+    if (!polarGeom || !polarSvgEl) return null;
+    var rect = polarSvgEl.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    var vbX = ((clientX - rect.left) / rect.width) * polarGeom.W,
+      vbY = ((clientY - rect.top) / rect.height) * polarGeom.H;
+    var kmh = polarGeom.vMin + ((vbX - polarGeom.mL) / polarGeom.pw) * (polarGeom.vMax - polarGeom.vMin);
+    var sink = polarGeom.sMin + ((vbY - polarGeom.mT) / polarGeom.ph) * (polarGeom.sMax - polarGeom.sMin);
+    return { kmh: kmh, sink: sink };
+  }
+  function polarSetSpeedFromX(clientX) {
+    var dp = polarDataAt(clientX, 0);
+    if (!dp) return;
+    var kmh = Math.max(polarGeom.minKmh, Math.min(polarGeom.maxKmh, dp.kmh));
+    state.glide.speedMS = kmh / 3.6;
     $glideSpeed.value = Math.round(state.glide.speedMS / SPEED_UNITS[state.glide.speedUnit]);
     renderGlide();
     scheduleSave();
+  }
+  // Wheel = zoom toward the cursor; keep the domain within the data extent.
+  function onPolarWheel(e) {
+    if (!polarGeom) return;
+    e.preventDefault();
+    var pts = parsePolar(gliderById(state.glide.gliderId)),
+      full = polarFullExtent(pts),
+      dp = polarDataAt(e.clientX, e.clientY);
+    if (!dp) return;
+    var k = e.deltaY < 0 ? 0.85 : 1.18,
+      minVspan = full.vMax * 0.1,
+      minSspan = full.sMax * 0.1;
+    var vSpan = Math.max(minVspan, Math.min(full.vMax, (polarView.vMax - polarView.vMin) * k)),
+      sSpan = Math.max(minSspan, Math.min(full.sMax, (polarView.sMax - polarView.sMin) * k));
+    // Keep the cursor's data point fixed under the pointer, then clamp into range.
+    var fx = (dp.kmh - polarView.vMin) / (polarView.vMax - polarView.vMin),
+      fy = (dp.sink - polarView.sMin) / (polarView.sMax - polarView.sMin);
+    var vMin = dp.kmh - fx * vSpan,
+      sMin = dp.sink - fy * sSpan;
+    vMin = Math.max(0, Math.min(full.vMax - vSpan, vMin));
+    sMin = Math.max(0, Math.min(full.sMax - sSpan, sMin));
+    polarView = { vMin: vMin, vMax: vMin + vSpan, sMin: sMin, sMax: sMin + sSpan };
+    renderPolarChart();
+  }
+  // Pointer drag = pan; a plain press (no drag) sets the speed at that x.
+  function initPolarChart() {
+    var dragging = false,
+      moved = false,
+      lastX = 0,
+      lastY = 0;
+    $glidePolarChart.addEventListener("wheel", onPolarWheel, { passive: false });
+    $glidePolarChart.addEventListener("dblclick", function () {
+      polarView = null;
+      renderPolarChart();
+    });
+    $glidePolarChart.addEventListener("pointerdown", function (e) {
+      dragging = true;
+      moved = false;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      try {
+        $glidePolarChart.setPointerCapture(e.pointerId);
+      } catch (_) {}
+    });
+    $glidePolarChart.addEventListener("pointermove", function (e) {
+      if (!dragging || !polarGeom || !polarSvgEl) return;
+      if (Math.abs(e.clientX - lastX) + Math.abs(e.clientY - lastY) > 3) moved = true;
+      var rect = polarSvgEl.getBoundingClientRect();
+      if (!rect.width) return;
+      var dV = ((e.clientX - lastX) / rect.width) * polarGeom.W * ((polarView.vMax - polarView.vMin) / polarGeom.pw);
+      var dS = ((e.clientY - lastY) / rect.height) * polarGeom.H * ((polarView.sMax - polarView.sMin) / polarGeom.ph);
+      lastX = e.clientX;
+      lastY = e.clientY;
+      var pts = parsePolar(gliderById(state.glide.gliderId)),
+        full = polarFullExtent(pts),
+        vSpan = polarView.vMax - polarView.vMin,
+        sSpan = polarView.sMax - polarView.sMin;
+      var vMin = Math.max(0, Math.min(full.vMax - vSpan, polarView.vMin - dV)),
+        sMin = Math.max(0, Math.min(full.sMax - sSpan, polarView.sMin - dS));
+      polarView = { vMin: vMin, vMax: vMin + vSpan, sMin: sMin, sMax: sMin + sSpan };
+      renderPolarChart();
+    });
+    function endDrag(e) {
+      if (!dragging) return;
+      dragging = false;
+      try {
+        $glidePolarChart.releasePointerCapture(e.pointerId);
+      } catch (_) {}
+      if (!moved) polarSetSpeedFromX(e.clientX); // a click → set speed
+    }
+    $glidePolarChart.addEventListener("pointerup", endDrag);
+    $glidePolarChart.addEventListener("pointercancel", endDrag);
   }
   function onGlideSpeedInput() {
     var v = parseFloat($glideSpeed.value);
@@ -2687,7 +2795,7 @@ function initMap() {
     setQMode("polar");
   };
   $glideGliderSelect.addEventListener("change", onGlideGliderChange);
-  $glidePolarChart.addEventListener("click", onPolarChartClick);
+  initPolarChart();
   $glideSpeed.addEventListener("input", onGlideSpeedInput);
   $glideSpeedUnit.addEventListener("change", onGlideSpeedUnitChange);
   $glideWindSpeed.addEventListener("input", onGlideWindSpeedInput);
