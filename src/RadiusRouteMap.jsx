@@ -52,6 +52,9 @@ export default function RadiusRouteMap() {
             <button className="seg-btn" id="mode-plan">
               Flight plan
             </button>
+            <button className="seg-btn" id="mode-glider">
+              Glider
+            </button>
           </div>
 
           {/* RANGES MODE — fuel-based control */}
@@ -180,6 +183,40 @@ export default function RadiusRouteMap() {
             </div>
           </div>
 
+          {/* GLIDER MODE — glide-range control */}
+          <div id="glider-control" style={{ display: "none" }}>
+            <div className="field-label">Altitude</div>
+            <div className="radius-row">
+              <input type="number" id="glide-height-input" min="0" step="any" defaultValue="1000" />
+              <select id="glide-height-unit" defaultValue="m">
+                <option value="m">m</option>
+                <option value="ft">ft</option>
+              </select>
+              <select id="glide-datum" defaultValue="AGL">
+                <option value="AGL">AGL</option>
+                <option value="MSL">MSL</option>
+              </select>
+            </div>
+
+            <div id="glide-ground-row" style={{ marginTop: 14, display: "none" }}>
+              <div className="field-label">Ground / target elevation</div>
+              <div className="radius-row">
+                <input type="number" id="glide-ground-input" min="0" step="any" defaultValue="0" />
+                <span className="unit-suffix" id="glide-ground-unit">
+                  m
+                </span>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <div className="field-label">Aerodynamic quality (glide ratio)</div>
+              <div className="radius-row">
+                <input type="number" id="glide-ratio-input" min="0" step="any" defaultValue="40" />
+                <span className="unit-suffix">:1</span>
+              </div>
+            </div>
+          </div>
+
           {/* RANGES MODE */}
           <div id="ranges-view">
             <div className="stats" id="ranges-stats"></div>
@@ -219,6 +256,17 @@ export default function RadiusRouteMap() {
               Route points
             </div>
             <div id="route-points"></div>
+          </div>
+
+          {/* GLIDER MODE — view */}
+          <div id="glider-view" style={{ display: "none" }}>
+            <div className="stats" id="glide-stats"></div>
+            <div className="note" style={{ marginTop: 14 }}>
+              Range a glider can reach by gliding down from the given altitude at the
+              entered <b>glide ratio</b> (L/D), in <b>still air</b> — no wind or sink.
+              The shape is a <b>true geodesic circle</b>. Click or drag the pin to move
+              the launch point.
+            </div>
           </div>
 
           <button id="reset" style={{ marginTop: 4 }}>
@@ -314,6 +362,7 @@ function initMap() {
     SAVE_VERSION = 2;
   var UNITS = { km: 1000, mi: 1609.344, nmi: 1852 };
   var SPEED_UNITS = { kt: 0.5144444, "km/h": 0.2777778, mph: 0.44704 };
+  var HEIGHT_UNITS = { m: 1, ft: 0.3048 };
   var RESERVE_MIN = 40;
   // Range regimes (order = draw order; later = drawn on top). Colours per request.
   var REGIMES = [
@@ -515,6 +564,12 @@ function initMap() {
     iconSize: [18, 18],
     iconAnchor: [9, 9],
   });
+  var glidePinIcon = L.divIcon({
+    className: "",
+    html: '<div class="center-pin glide"></div>',
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+  });
   function routeMarkerIcon(role) {
     return L.divIcon({
       className: "",
@@ -574,6 +629,14 @@ function initMap() {
       },
     },
     route: { budgetM: 100000, points: [], info: [] },
+    glide: {
+      center: L.latLng(DEFAULT_CENTER[0], DEFAULT_CENTER[1]),
+      heightM: 1000,
+      groundM: 0,
+      ratio: 40,
+      datum: "AGL",
+      heightUnit: "m",
+    },
   };
   // Overlay any persisted state before layers/markers are built from it.
   if (saved) {
@@ -601,6 +664,15 @@ function initMap() {
         return L.latLng(p.lat, p.lng);
       });
       state.route.info = saved.route.info || [];
+    }
+    if (saved.glide) {
+      var sg = saved.glide;
+      if (sg.center) state.glide.center = L.latLng(sg.center.lat, sg.center.lng);
+      if (typeof sg.heightM === "number") state.glide.heightM = sg.heightM;
+      if (typeof sg.groundM === "number") state.glide.groundM = sg.groundM;
+      if (typeof sg.ratio === "number") state.glide.ratio = sg.ratio;
+      state.glide.datum = sg.datum || state.glide.datum;
+      state.glide.heightUnit = sg.heightUnit || state.glide.heightUnit;
     }
   }
   var navData = [],
@@ -666,10 +738,21 @@ function initMap() {
   var navaidLayer = L.layerGroup();
   var airportLayer = L.layerGroup();
   var waypointLayer = L.layerGroup();
+  var glideCircle = L.polygon([], {
+    color: "#f59e0b",
+    weight: 2,
+    fillColor: "#f59e0b",
+    fillOpacity: 0.12,
+  });
+  var glideMarker = L.marker(state.glide.center, { icon: glidePinIcon, draggable: true });
   centerMarker.on("drag", function (e) {
     state.ranges.center = e.target.getLatLng();
     clearAirportCode();
     renderRanges();
+  });
+  glideMarker.on("drag", function (e) {
+    state.glide.center = e.target.getLatLng();
+    renderGlide();
   });
 
   // ---- DOM ----
@@ -689,7 +772,18 @@ function initMap() {
     rangesView = document.getElementById("ranges-view"),
     routeView = document.getElementById("route-view");
   var segRanges = document.getElementById("mode-ranges"),
-    segPlan = document.getElementById("mode-plan");
+    segPlan = document.getElementById("mode-plan"),
+    segGlider = document.getElementById("mode-glider");
+  var gliderControl = document.getElementById("glider-control"),
+    gliderView = document.getElementById("glider-view"),
+    $glideHeight = document.getElementById("glide-height-input"),
+    $glideHeightUnit = document.getElementById("glide-height-unit"),
+    $glideDatum = document.getElementById("glide-datum"),
+    $glideGroundRow = document.getElementById("glide-ground-row"),
+    $glideGround = document.getElementById("glide-ground-input"),
+    $glideGroundUnit = document.getElementById("glide-ground-unit"),
+    $glideRatio = document.getElementById("glide-ratio-input"),
+    $glideStats = document.getElementById("glide-stats");
   var presetWrap = document.getElementById("presets"),
     $navStatus = document.getElementById("nav-status");
   var $routePoints = document.getElementById("route-points");
@@ -747,6 +841,14 @@ function initMap() {
               return { lat: p.lat, lng: p.lng };
             }),
             info: state.route.info,
+          },
+          glide: {
+            center: { lat: state.glide.center.lat, lng: state.glide.center.lng },
+            heightM: state.glide.heightM,
+            groundM: state.glide.groundM,
+            ratio: state.glide.ratio,
+            datum: state.glide.datum,
+            heightUnit: state.glide.heightUnit,
           },
           layers: { nav: navState.types, apt: aptState.types, wpt: wptState.enabled },
         })
@@ -923,6 +1025,59 @@ function initMap() {
     if (!(p.speed > 0)) return 0;
     return regimeEnduranceH(p) * 3600 * p.speed * SPEED_UNITS[state.ranges.speedUnit];
   }
+  // ---- Glider (glide-range) ----
+  function effGlideHeightM() {
+    var g = state.glide;
+    return g.datum === "MSL" ? Math.max(0, g.heightM - g.groundM) : g.heightM;
+  }
+  function glideDistanceM() {
+    return Math.max(0, state.glide.ratio * effGlideHeightM());
+  }
+  // Push state.glide back into the DOM inputs (used on init after restore).
+  function syncGlideInputs() {
+    var g = state.glide,
+      f = HEIGHT_UNITS[g.heightUnit];
+    $glideHeight.value = Math.round(g.heightM / f);
+    $glideGround.value = Math.round(g.groundM / f);
+    $glideHeightUnit.value = g.heightUnit;
+    $glideDatum.value = g.datum;
+    $glideGroundUnit.textContent = g.heightUnit;
+    $glideGroundRow.style.display = g.datum === "MSL" ? "" : "none";
+    $glideRatio.value = g.ratio;
+  }
+  function renderGlide() {
+    var g = state.glide,
+      hu = g.heightUnit,
+      distM = glideDistanceM();
+    glideMarker.setLatLng(g.center);
+    glideCircle.setLatLngs(distM > 0 ? geodesicRing(g.center, distM, 256) : []);
+
+    var effH = effGlideHeightM(),
+      km = distM / 1000,
+      area = capArea(distM) / 1e6;
+    var altLine = fmt(g.heightM / HEIGHT_UNITS[hu], 0) + " " + hu + " " + g.datum;
+    if (g.datum === "MSL")
+      altLine += " (" + fmt(effH / HEIGHT_UNITS[hu], 0) + " " + hu + " above ground)";
+
+    $glideStats.innerHTML =
+      row("Launch point", fmtCoord(g.center)) +
+      row("Altitude", altLine) +
+      row("Glide ratio", fmt(g.ratio, g.ratio < 10 ? 1 : 0) + " : 1") +
+      row(
+        "Glide range",
+        distM > 0
+          ? fmt(km, km < 100 ? 1 : 0) +
+              " km · " +
+              fmt(distM / UNITS.mi, 0) +
+              " mi · " +
+              fmt(distM / UNITS.nmi, 0) +
+              " nmi"
+          : "—"
+      ) +
+      row("Diameter", fmt(km * 2, km < 100 ? 1 : 0) + " km") +
+      row("Cap area", fmt(area, 0) + " km²");
+  }
+
   function renderRanges() {
     var rg = state.ranges;
     centerMarker.setLatLng(rg.center);
@@ -1693,43 +1848,52 @@ function initMap() {
 
   function render() {
     if (state.mode === "ranges") renderRanges();
+    else if (state.mode === "glider") renderGlide();
     else redrawRouteGeometry();
   }
 
   function setMode(m) {
     state.mode = m;
+    // Drop every mode's layers first, then re-add the active mode's below.
+    REGIMES.forEach(function (rg) {
+      map.removeLayer(rangeCircles[rg.key]);
+    });
+    map.removeLayer(rangeLabelLayer);
+    map.removeLayer(centerMarker);
+    map.removeLayer(routeCircle);
+    map.removeLayer(routeLinesGroup);
+    map.removeLayer(routeMarkersGroup);
+    map.removeLayer(glideCircle);
+    map.removeLayer(glideMarker);
+
+    segRanges.classList.toggle("active", m === "ranges");
+    segPlan.classList.toggle("active", m === "plan");
+    segGlider.classList.toggle("active", m === "glider");
+
+    rangesControl.style.display = m === "ranges" ? "" : "none";
+    radiusControl.style.display = m === "plan" ? "" : "none";
+    gliderControl.style.display = m === "glider" ? "" : "none";
+    rangesView.style.display = m === "ranges" ? "" : "none";
+    routeView.style.display = m === "plan" ? "" : "none";
+    gliderView.style.display = m === "glider" ? "" : "none";
+
     if (m === "ranges") {
       REGIMES.forEach(function (rg) {
         map.addLayer(rangeCircles[rg.key]);
       });
       map.addLayer(rangeLabelLayer);
       map.addLayer(centerMarker);
-      map.removeLayer(routeCircle);
-      map.removeLayer(routeLinesGroup);
-      map.removeLayer(routeMarkersGroup);
-      rangesControl.style.display = "";
-      radiusControl.style.display = "none";
-      rangesView.style.display = "";
-      routeView.style.display = "none";
-      segRanges.classList.add("active");
-      segPlan.classList.remove("active");
       renderRanges();
+    } else if (m === "glider") {
+      map.addLayer(glideCircle);
+      map.addLayer(glideMarker);
+      $glideGroundRow.style.display = state.glide.datum === "MSL" ? "" : "none";
+      renderGlide();
     } else {
-      REGIMES.forEach(function (rg) {
-        map.removeLayer(rangeCircles[rg.key]);
-      });
-      map.removeLayer(rangeLabelLayer);
-      map.removeLayer(centerMarker);
       map.addLayer(routeCircle);
       map.addLayer(routeLinesGroup);
       map.addLayer(routeMarkersGroup);
       rcLabel.textContent = "Budget (total range)";
-      rangesControl.style.display = "none";
-      radiusControl.style.display = "";
-      rangesView.style.display = "none";
-      routeView.style.display = "";
-      segPlan.classList.add("active");
-      segRanges.classList.remove("active");
       syncControls();
       rebuildRouteMarkers();
       redrawRouteGeometry();
@@ -1785,6 +1949,44 @@ function initMap() {
   }
   function onModePlan() {
     setMode("plan");
+  }
+  function onModeGlider() {
+    setMode("glider");
+  }
+  // Glider-mode control handlers: update state, redraw, and persist.
+  function onGlideHeightInput() {
+    var v = parseFloat($glideHeight.value);
+    state.glide.heightM = !isNaN(v) && v > 0 ? v * HEIGHT_UNITS[state.glide.heightUnit] : 0;
+    renderGlide();
+    scheduleSave();
+  }
+  function onGlideHeightUnitChange() {
+    // Preserve the stored metres; just re-express the inputs in the new unit.
+    state.glide.heightUnit = $glideHeightUnit.value;
+    var f = HEIGHT_UNITS[state.glide.heightUnit];
+    $glideHeight.value = Math.round(state.glide.heightM / f);
+    $glideGround.value = Math.round(state.glide.groundM / f);
+    $glideGroundUnit.textContent = state.glide.heightUnit;
+    renderGlide();
+    scheduleSave();
+  }
+  function onGlideDatumChange() {
+    state.glide.datum = $glideDatum.value;
+    $glideGroundRow.style.display = state.glide.datum === "MSL" ? "" : "none";
+    renderGlide();
+    scheduleSave();
+  }
+  function onGlideGroundInput() {
+    var v = parseFloat($glideGround.value);
+    state.glide.groundM = !isNaN(v) && v > 0 ? v * HEIGHT_UNITS[state.glide.heightUnit] : 0;
+    renderGlide();
+    scheduleSave();
+  }
+  function onGlideRatioInput() {
+    var v = parseFloat($glideRatio.value);
+    state.glide.ratio = !isNaN(v) && v > 0 ? v : 0;
+    renderGlide();
+    scheduleSave();
   }
   // Ranges-mode control: re-read inputs and redraw on any change.
   function onRangesInput() {
@@ -1854,6 +2056,9 @@ function initMap() {
     if (state.mode === "ranges") {
       state.ranges.center = L.latLng(DEFAULT_CENTER[0], DEFAULT_CENTER[1]);
       renderRanges();
+    } else if (state.mode === "glider") {
+      state.glide.center = L.latLng(DEFAULT_CENTER[0], DEFAULT_CENTER[1]);
+      renderGlide();
     }
   }
   // On a narrow screen the panels fold to right-edge circular buttons (see the
@@ -2009,6 +2214,14 @@ function initMap() {
 
   segRanges.onclick = onModeRanges;
   segPlan.onclick = onModePlan;
+  segGlider.onclick = onModeGlider;
+
+  // Glider-mode inputs.
+  $glideHeight.addEventListener("input", onGlideHeightInput);
+  $glideHeightUnit.addEventListener("change", onGlideHeightUnitChange);
+  $glideDatum.addEventListener("change", onGlideDatumChange);
+  $glideGround.addEventListener("input", onGlideGroundInput);
+  $glideRatio.addEventListener("input", onGlideRatioInput);
 
   document.getElementById("undo-btn").onclick = onUndo;
   document.getElementById("clear-btn").onclick = onClear;
@@ -2176,6 +2389,10 @@ function initMap() {
       state.ranges.center = e.latlng;
       clearAirportCode();
       renderRanges();
+    } else if (state.mode === "glider") {
+      state.glide.center = e.latlng;
+      renderGlide();
+      scheduleSave();
     } else tryAddRoutePoint(e.latlng);
   });
   map.on("mousemove", function (e) {
@@ -2251,6 +2468,7 @@ function initMap() {
   }
   rebuildPresets();
   syncRangesInputs();
+  syncGlideInputs();
   setMode(state.mode);
   // Dragging is always wired (onDown no-ops in mobile); the responsive layout is
   // (re)applied at load and whenever the viewport crosses the 640px breakpoint.
