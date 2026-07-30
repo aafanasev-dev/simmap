@@ -68,6 +68,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .wind-tick.wt-w { left: 9px; top: 50%; }
 .wind-needle { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-origin: 50% 100%; transform: translate(-50%, -100%) rotate(0deg); border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 34px solid #f59e0b; pointer-events: none; }
 .wind-dir-readout { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 11px; font-weight: 700; color: var(--text); background: #fff; border-radius: 6px; padding: 1px 4px; font-variant-numeric: tabular-nums; pointer-events: none; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+
+/* Glider: aerodynamic-quality direct/polar toggle + polar chart */
+.q-toggle { display: flex; gap: 3px; background: rgba(0,0,0,0.05); border-radius: 9px; padding: 3px; }
+.q-toggle .seg-btn { padding: 6px; font-size: 12px; }
+.polar-chart { margin-top: 8px; border: 1px solid var(--border); border-radius: 10px; background: rgba(0,0,0,0.02); padding: 4px; overflow: hidden; cursor: crosshair; }
+.polar-chart .polar-svg { display: block; }
 input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; margin-top: 10px; }
 
 /* Ranges-mode regime inputs & colour swatches */

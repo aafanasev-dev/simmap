@@ -69,6 +69,15 @@ and parses it with PapaParse. Markers are viewport-culled and capped at `MAX_NAV
 (500), only shown at zoom ≥ `MIN_NAV_ZOOM`. Beacon popups can add the beacon as a
 route waypoint.
 
+### Glider polars
+
+In Glider mode the aerodynamic quality (glide ratio) can be entered directly, or
+read off a glider **polar**. Polars are bundled as raw CSV text via Vite's `?raw`
+import and listed in the `GLIDERS` registry inside `initMap()`; `parsePolar`/
+`polarAt` interpolate sink & L/D at the chosen airspeed, and `renderPolarChart`
+draws the curve with an origin line to the operating point. Add a glider by
+importing its CSV and pushing a `GLIDERS` entry (or switch to `import.meta.glob`).
+
 ## Runtime external dependencies
 
 The app needs internet at runtime for OpenStreetMap tiles and (if navaids are

@@ -1,6 +1,9 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import Papa from "papaparse";
+// Glider polars are bundled as raw CSV text (Vite ?raw). To add a glider later,
+// import its CSV and add an entry to GLIDERS below (or switch to import.meta.glob).
+import blanikRaw from "./blanik_L-13.csv?raw";
 
 export default function RadiusRouteMap() {
   const appRef = useRef(null);
@@ -211,10 +214,29 @@ export default function RadiusRouteMap() {
             </div>
 
             <div style={{ marginTop: 14 }}>
-              <div className="field-label">Aerodynamic quality (glide ratio)</div>
-              <div className="radius-row">
-                <input type="number" id="glide-ratio-input" min="0" step="any" defaultValue="40" />
-                <span className="unit-suffix">:1</span>
+              <div className="field-label">Aerodynamic quality</div>
+              <div className="q-toggle">
+                <button className="seg-btn active" id="glide-q-direct">
+                  Direct
+                </button>
+                <button className="seg-btn" id="glide-q-polar">
+                  From polar
+                </button>
+              </div>
+
+              <div id="glide-direct-block" style={{ marginTop: 10 }}>
+                <div className="radius-row">
+                  <input type="number" id="glide-ratio-input" min="0" step="any" defaultValue="40" />
+                  <span className="unit-suffix">:1</span>
+                </div>
+              </div>
+
+              <div id="glide-polar-block" style={{ marginTop: 10, display: "none" }}>
+                <div className="radius-row">
+                  <select id="glide-glider-select" style={{ flex: 1, minWidth: 0 }}></select>
+                </div>
+                <div className="polar-chart" id="glide-polar-chart"></div>
+                <div className="note" id="glide-polar-readout" style={{ marginTop: 6 }}></div>
               </div>
             </div>
 
@@ -444,6 +466,12 @@ function initMap() {
   var MIN_WPT_ZOOM = 7,
     MAX_WPT = 400;
   var ELEV_URL = "https://api.open-meteo.com/v1/elevation";
+  // Glider polars. Each entry names its sink/LD columns in the bundled CSV; two
+  // Blaník variants share one file. Add a glider = import a CSV + push an entry.
+  var GLIDERS = [
+    { id: "blanik-l13", name: "Blaník L-13", csv: blanikRaw, sinkCol: "sink_ms_L13_472kg", ldCol: "LD_L13" },
+    { id: "blanik-l13ac", name: "Blaník L-13AC", csv: blanikRaw, sinkCol: "sink_ms_L13AC_500kg", ldCol: "LD_L13AC" },
+  ];
 
   function toRad(d) {
     return (d * Math.PI) / 180;
@@ -514,6 +542,67 @@ function initMap() {
     var lng2 =
       lng1 + Math.atan2(Math.sin(br) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
     return L.latLng(toDeg(lat2), ((toDeg(lng2) + 540) % 360) - 180);
+  }
+
+  // ---- Glider polars ----
+  var polarCache = {};
+  function gliderById(id) {
+    for (var i = 0; i < GLIDERS.length; i++) if (GLIDERS[i].id === id) return GLIDERS[i];
+    return GLIDERS[0];
+  }
+  // Parse a glider's CSV into speed/sink/LD points, sorted by speed. Skips blank
+  // and comment lines (the CSV has both `#…` and quoted `"#…"` comments) and reads
+  // column positions from the header row. Memoised per glider id.
+  function parsePolar(g) {
+    if (polarCache[g.id]) return polarCache[g.id];
+    var lines = g.csv.split(/\r?\n/),
+      header = null,
+      idx = {},
+      pts = [];
+    for (var i = 0; i < lines.length; i++) {
+      var ln = lines[i].trim();
+      if (!ln || ln.charAt(0) === "#" || ln.slice(0, 2) === '"#') continue;
+      var cols = ln.split(",");
+      if (!header) {
+        header = cols;
+        for (var c = 0; c < header.length; c++) idx[header[c].trim()] = c;
+        continue;
+      }
+      var vMs = parseFloat(cols[idx.v_ms]),
+        vKmh = parseFloat(cols[idx.v_kmh]),
+        sink = parseFloat(cols[idx[g.sinkCol]]),
+        ld = parseFloat(cols[idx[g.ldCol]]);
+      if (isNaN(vMs) || isNaN(sink) || isNaN(ld)) continue;
+      pts.push({ vMs: vMs, vKmh: vKmh, sink: Math.abs(sink), ld: ld });
+    }
+    pts.sort(function (a, b) {
+      return a.vMs - b.vMs;
+    });
+    polarCache[g.id] = pts;
+    return pts;
+  }
+  // Linear-interpolate sink & LD at an airspeed (m/s), clamped to the data range.
+  function polarAt(pts, vMs) {
+    if (!pts.length) return { sink: 0, ld: 0, clamped: false };
+    var lo = pts[0],
+      hi = pts[pts.length - 1];
+    if (vMs <= lo.vMs) return { sink: lo.sink, ld: lo.ld, clamped: vMs < lo.vMs };
+    if (vMs >= hi.vMs) return { sink: hi.sink, ld: hi.ld, clamped: vMs > hi.vMs };
+    for (var i = 1; i < pts.length; i++) {
+      if (vMs <= pts[i].vMs) {
+        var a = pts[i - 1],
+          b = pts[i],
+          t = (vMs - a.vMs) / (b.vMs - a.vMs);
+        return { sink: a.sink + t * (b.sink - a.sink), ld: a.ld + t * (b.ld - a.ld), clamped: false };
+      }
+    }
+    return { sink: hi.sink, ld: hi.ld, clamped: false };
+  }
+  // Best-glide point = max L/D (where a line from the origin is tangent to the polar).
+  function polarBest(pts) {
+    var best = pts[0];
+    for (var i = 1; i < pts.length; i++) if (pts[i].ld > best.ld) best = pts[i];
+    return best;
   }
   function geodesicLine(a, b) {
     var lat1 = toRad(a.lat),
@@ -689,6 +778,8 @@ function initMap() {
       ratio: 40,
       datum: "AGL",
       heightUnit: "m",
+      qmode: "direct", // "direct" (typed ratio) | "polar" (from a glider polar)
+      gliderId: "blanik-l13",
       speedMS: 55 * SPEED_UNITS.kt,
       speedUnit: "kt",
       windDir: 0, // degrees, direction the wind blows TO
@@ -731,6 +822,8 @@ function initMap() {
       if (typeof sg.ratio === "number") state.glide.ratio = sg.ratio;
       state.glide.datum = sg.datum || state.glide.datum;
       state.glide.heightUnit = sg.heightUnit || state.glide.heightUnit;
+      state.glide.qmode = sg.qmode || state.glide.qmode;
+      state.glide.gliderId = sg.gliderId || state.glide.gliderId;
       if (typeof sg.speedMS === "number") state.glide.speedMS = sg.speedMS;
       state.glide.speedUnit = sg.speedUnit || state.glide.speedUnit;
       if (typeof sg.windDir === "number") state.glide.windDir = sg.windDir;
@@ -850,6 +943,13 @@ function initMap() {
     $glideGroundValue = document.getElementById("glide-ground-value"),
     $glideGroundStatus = document.getElementById("glide-ground-status"),
     $glideRatio = document.getElementById("glide-ratio-input"),
+    $glideQDirect = document.getElementById("glide-q-direct"),
+    $glideQPolar = document.getElementById("glide-q-polar"),
+    $glideDirectBlock = document.getElementById("glide-direct-block"),
+    $glidePolarBlock = document.getElementById("glide-polar-block"),
+    $glideGliderSelect = document.getElementById("glide-glider-select"),
+    $glidePolarChart = document.getElementById("glide-polar-chart"),
+    $glidePolarReadout = document.getElementById("glide-polar-readout"),
     $glideSpeed = document.getElementById("glide-speed-input"),
     $glideSpeedUnit = document.getElementById("glide-speed-unit"),
     $glideWindDial = document.getElementById("glide-wind-dial"),
@@ -923,6 +1023,8 @@ function initMap() {
             ratio: state.glide.ratio,
             datum: state.glide.datum,
             heightUnit: state.glide.heightUnit,
+            qmode: state.glide.qmode,
+            gliderId: state.glide.gliderId,
             speedMS: state.glide.speedMS,
             speedUnit: state.glide.speedUnit,
             windDir: state.glide.windDir,
@@ -1109,9 +1211,16 @@ function initMap() {
     var g = state.glide;
     return g.datum === "MSL" ? Math.max(0, g.heightM - g.groundM) : g.heightM;
   }
+  // Glide ratio (L/D): typed directly, or read off the selected glider's polar at
+  // the current airspeed (sink → LD). One hook feeds the whole glide pipeline.
+  function currentRatio() {
+    var g = state.glide;
+    if (g.qmode === "polar") return polarAt(parsePolar(gliderById(g.gliderId)), g.speedMS).ld;
+    return g.ratio;
+  }
   // Still-air, air-relative glide distance (metres).
   function glideDistanceM() {
-    return Math.max(0, state.glide.ratio * effGlideHeightM());
+    return Math.max(0, currentRatio() * effGlideHeightM());
   }
   // Ground centre of the reachable area: still-air circle drifted downwind by
   // wind_speed × time-aloft. No usable speed/wind ⇒ centred on the launch point.
@@ -1168,6 +1277,19 @@ function initMap() {
   }
 
   // Push state.glide back into the DOM inputs (used on init after restore).
+  function populateGliderSelect() {
+    $glideGliderSelect.innerHTML = GLIDERS.map(function (g) {
+      return '<option value="' + g.id + '">' + escapeHtml(g.name) + "</option>";
+    }).join("");
+  }
+  // Reflect the direct/polar choice: toggle buttons + which sub-block is visible.
+  function applyQModeUI() {
+    var polar = state.glide.qmode === "polar";
+    $glideQDirect.classList.toggle("active", !polar);
+    $glideQPolar.classList.toggle("active", polar);
+    $glideDirectBlock.style.display = polar ? "none" : "";
+    $glidePolarBlock.style.display = polar ? "" : "none";
+  }
   function syncGlideInputs() {
     var g = state.glide,
       f = HEIGHT_UNITS[g.heightUnit];
@@ -1177,11 +1299,15 @@ function initMap() {
     $glideGroundRow.style.display = g.datum === "MSL" ? "" : "none";
     showGroundValue();
     $glideRatio.value = g.ratio;
+    populateGliderSelect();
+    $glideGliderSelect.value = g.gliderId;
+    applyQModeUI();
     $glideSpeed.value = Math.round(g.speedMS / SPEED_UNITS[g.speedUnit]);
     $glideSpeedUnit.value = g.speedUnit;
     $glideWindSpeed.value = fmt(g.windMS / SPEED_UNITS[g.windUnit], g.windMS < 5 ? 1 : 0);
     $glideWindSpeedUnit.value = g.windUnit;
     setWindNeedle(g.windDir);
+    if (g.qmode === "polar") renderPolarChart();
   }
   function setWindNeedle(deg) {
     $glideWindNeedle.style.transform = "translate(-50%, -100%) rotate(" + deg + "deg)";
@@ -1199,7 +1325,8 @@ function initMap() {
     var effH = effGlideHeightM(),
       km = distM / 1000,
       area = capArea(distM) / 1e6,
-      T = g.speedMS > 0 ? distM / g.speedMS : 0;
+      T = g.speedMS > 0 ? distM / g.speedMS : 0,
+      ratio = currentRatio();
     var altLine = fmt(g.heightM / HEIGHT_UNITS[hu], 0) + " " + hu + " " + g.datum;
     if (g.datum === "MSL")
       altLine += " (" + fmt(effH / HEIGHT_UNITS[hu], 0) + " " + hu + " above ground)";
@@ -1207,7 +1334,13 @@ function initMap() {
     var html =
       row("Launch point", fmtCoord(g.center)) +
       row("Altitude", altLine) +
-      row("Glide ratio", fmt(g.ratio, g.ratio < 10 ? 1 : 0) + " : 1") +
+      row(
+        "Glide ratio" + (g.qmode === "polar" ? " · polar" : ""),
+        fmt(ratio, ratio < 10 ? 1 : 0) + " : 1"
+      ) +
+      (g.qmode === "polar"
+        ? row("Sink @ " + fmt(g.speedMS / SPEED_UNITS[g.speedUnit], 0) + " " + g.speedUnit, fmt(polarAt(parsePolar(gliderById(g.gliderId)), g.speedMS).sink, 2) + " m/s")
+        : "") +
       row(
         "Still-air range",
         distM > 0
@@ -1234,6 +1367,98 @@ function initMap() {
     }
     html += row("Diameter", fmt(km * 2, km < 100 ? 1 : 0) + " km") + row("Cap area", fmt(area, 0) + " km²");
     $glideStats.innerHTML = html;
+    if (g.qmode === "polar") renderPolarChart();
+  }
+
+  // ---- Polar chart ----
+  // Standard glider polar: airspeed on x (km/h), sink on y increasing downward
+  // (m/s). A dashed line from the origin to the best-glide (tangent) point, and a
+  // solid amber line to the operating point at the current speed. Theme-aware SVG.
+  var polarGeom = null; // pixel↔speed mapping for click-to-set-speed
+  function renderPolarChart() {
+    var g = state.glide,
+      pts = parsePolar(gliderById(g.gliderId));
+    if (!pts.length) {
+      $glidePolarChart.innerHTML = "";
+      $glidePolarReadout.textContent = "";
+      return;
+    }
+    var W = 264,
+      H = 156,
+      mL = 34,
+      mR = 8,
+      mT = 10,
+      mB = 20,
+      pw = W - mL - mR,
+      ph = H - mT - mB;
+    var maxV = pts[pts.length - 1].vKmh * 1.05,
+      maxS = 0;
+    pts.forEach(function (p) {
+      if (p.sink > maxS) maxS = p.sink;
+    });
+    maxS *= 1.05;
+    function X(vKmh) {
+      return mL + (vKmh / maxV) * pw;
+    }
+    function Y(sink) {
+      return mT + (sink / maxS) * ph;
+    }
+    polarGeom = { W: W, mL: mL, pw: pw, maxV: maxV, minKmh: pts[0].vKmh, maxKmh: pts[pts.length - 1].vKmh };
+
+    var op = polarAt(pts, g.speedMS),
+      opV = Math.max(pts[0].vKmh, Math.min(pts[pts.length - 1].vKmh, g.speedMS * 3.6)),
+      best = polarBest(pts);
+
+    // Literal colours: CSS var() doesn't resolve in SVG presentation attributes.
+    var axisCol = "rgba(0,0,0,0.35)",
+      curveCol = "#6b7280",
+      opCol = "#f59e0b",
+      bestCol = "#16a34a";
+    var s = '<svg viewBox="0 0 ' + W + " " + H + '" width="100%" preserveAspectRatio="xMidYMid meet" class="polar-svg">';
+    // Axes (origin at top-left of plot).
+    s += '<line x1="' + mL + '" y1="' + mT + '" x2="' + mL + '" y2="' + (mT + ph) + '" stroke="' + axisCol + '" stroke-width="1"/>';
+    s += '<line x1="' + mL + '" y1="' + mT + '" x2="' + (mL + pw) + '" y2="' + mT + '" stroke="' + axisCol + '" stroke-width="1"/>';
+    // Axis labels.
+    s += '<text x="' + (mL + pw) + '" y="' + (mT + ph + 14) + '" fill="' + axisCol + '" font-size="9" text-anchor="end">km/h</text>';
+    s += '<text x="' + (mL - 4) + '" y="' + (mT + 8) + '" fill="' + axisCol + '" font-size="9" text-anchor="end">m/s</text>';
+    // x ticks at rounded speeds.
+    var step = maxV > 180 ? 50 : 25;
+    for (var v = step; v < maxV; v += step) {
+      var xx = X(v);
+      s += '<line x1="' + xx + '" y1="' + mT + '" x2="' + xx + '" y2="' + (mT + 4) + '" stroke="' + axisCol + '" stroke-width="1"/>';
+      s += '<text x="' + xx + '" y="' + (mT + ph + 14) + '" fill="' + axisCol + '" font-size="8.5" text-anchor="middle">' + v + "</text>";
+    }
+    // Polar curve.
+    var d = pts
+      .map(function (p, i) {
+        return (i ? "L" : "M") + X(p.vKmh).toFixed(1) + " " + Y(p.sink).toFixed(1);
+      })
+      .join(" ");
+    s += '<path d="' + d + '" fill="none" stroke="' + curveCol + '" stroke-width="2" stroke-linejoin="round"/>';
+    // Origin → best-glide (tangent, dashed) and its marker.
+    s += '<line x1="' + X(0) + '" y1="' + Y(0) + '" x2="' + X(best.vKmh) + '" y2="' + Y(best.sink) + '" stroke="' + bestCol + '" stroke-width="1.5" stroke-dasharray="3 3"/>';
+    s += '<circle cx="' + X(best.vKmh) + '" cy="' + Y(best.sink) + '" r="3.5" fill="none" stroke="' + bestCol + '" stroke-width="1.5"/>';
+    // Origin → operating point (solid amber) and its marker.
+    s += '<line x1="' + X(0) + '" y1="' + Y(0) + '" x2="' + X(opV) + '" y2="' + Y(op.sink) + '" stroke="' + opCol + '" stroke-width="2"/>';
+    s += '<circle cx="' + X(opV) + '" cy="' + Y(op.sink) + '" r="4.5" fill="' + opCol + '" stroke="#fff" stroke-width="1.5"/>';
+    s += "</svg>";
+    $glidePolarChart.innerHTML = s;
+
+    $glidePolarReadout.innerHTML =
+      "At <b>" +
+      fmt(g.speedMS / SPEED_UNITS[g.speedUnit], 0) +
+      " " +
+      g.speedUnit +
+      "</b>: sink <b>" +
+      fmt(op.sink, 2) +
+      " m/s</b>, L/D <b>" +
+      fmt(op.ld, op.ld < 10 ? 1 : 0) +
+      "</b>. Best glide " +
+      fmt(best.ld, 0) +
+      ":1 at " +
+      Math.round(best.vKmh) +
+      " km/h." +
+      (op.clamped ? " <span style=\"color:var(--danger)\">Speed outside polar range — clamped.</span>" : "");
   }
 
   function renderRanges() {
@@ -2139,6 +2364,30 @@ function initMap() {
     renderGlide();
     scheduleSave();
   }
+  function setQMode(m) {
+    state.glide.qmode = m;
+    applyQModeUI();
+    renderGlide();
+    scheduleSave();
+  }
+  function onGlideGliderChange() {
+    state.glide.gliderId = $glideGliderSelect.value;
+    renderGlide();
+    scheduleSave();
+  }
+  // Click the polar chart to set the airspeed (pixel-x → km/h → m/s).
+  function onPolarChartClick(e) {
+    if (!polarGeom) return;
+    var rect = $glidePolarChart.getBoundingClientRect();
+    if (!rect.width) return;
+    var vbX = ((e.clientX - rect.left) / rect.width) * polarGeom.W;
+    var kmh = ((vbX - polarGeom.mL) / polarGeom.pw) * polarGeom.maxV;
+    kmh = Math.max(polarGeom.minKmh, Math.min(polarGeom.maxKmh, kmh));
+    state.glide.speedMS = (kmh / 3.6);
+    $glideSpeed.value = Math.round(state.glide.speedMS / SPEED_UNITS[state.glide.speedUnit]);
+    renderGlide();
+    scheduleSave();
+  }
   function onGlideSpeedInput() {
     var v = parseFloat($glideSpeed.value);
     state.glide.speedMS = !isNaN(v) && v > 0 ? v * SPEED_UNITS[state.glide.speedUnit] : 0;
@@ -2148,6 +2397,7 @@ function initMap() {
   function onGlideSpeedUnitChange() {
     state.glide.speedUnit = $glideSpeedUnit.value;
     $glideSpeed.value = Math.round(state.glide.speedMS / SPEED_UNITS[state.glide.speedUnit]);
+    renderGlide();
     scheduleSave();
   }
   function onGlideWindSpeedInput() {
@@ -2430,6 +2680,14 @@ function initMap() {
   $glideHeightUnit.addEventListener("change", onGlideHeightUnitChange);
   $glideDatum.addEventListener("change", onGlideDatumChange);
   $glideRatio.addEventListener("input", onGlideRatioInput);
+  $glideQDirect.onclick = function () {
+    setQMode("direct");
+  };
+  $glideQPolar.onclick = function () {
+    setQMode("polar");
+  };
+  $glideGliderSelect.addEventListener("change", onGlideGliderChange);
+  $glidePolarChart.addEventListener("click", onPolarChartClick);
   $glideSpeed.addEventListener("input", onGlideSpeedInput);
   $glideSpeedUnit.addEventListener("change", onGlideSpeedUnitChange);
   $glideWindSpeed.addEventListener("input", onGlideWindSpeedInput);
