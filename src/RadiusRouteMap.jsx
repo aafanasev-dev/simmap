@@ -4,6 +4,8 @@ import Papa from "papaparse";
 // Glider polars are bundled as raw CSV text (Vite ?raw). To add a glider later,
 // import its CSV and add an entry to GLIDERS below (or switch to import.meta.glob).
 import blanikRaw from "./blanik_L-13.csv?raw";
+import ls8Raw from "./LS8-18.csv?raw";
+import is28Raw from "./IS-28.csv?raw";
 
 export default function RadiusRouteMap() {
   const appRef = useRef(null);
@@ -236,6 +238,10 @@ export default function RadiusRouteMap() {
                   <select id="glide-glider-select" style={{ flex: 1, minWidth: 0 }}></select>
                 </div>
                 <div className="polar-chart" id="glide-polar-chart"></div>
+                <div className="field-label" style={{ marginTop: 10 }}>
+                  Glide-ratio degradation <span id="glide-degrade-val">100%</span>
+                </div>
+                <input type="range" id="glide-degrade" min="50" max="100" step="1" defaultValue="100" />
                 <div className="note" id="glide-polar-readout" style={{ marginTop: 6 }}></div>
               </div>
             </div>
@@ -481,6 +487,10 @@ function initMap() {
   var GLIDERS = [
     { id: "blanik-l13", name: "Blaník L-13", csv: blanikRaw, sinkCol: "sink_ms_L13_472kg", ldCol: "LD_L13" },
     { id: "blanik-l13ac", name: "Blaník L-13AC", csv: blanikRaw, sinkCol: "sink_ms_L13AC_500kg", ldCol: "LD_L13AC" },
+    { id: "ls8-18-dry", name: "LS-8 (18 m)", csv: ls8Raw, sinkCol: "sink_ms_dry_325kg", ldCol: "LD_dry" },
+    { id: "ls8-18-ball", name: "LS-8 (18 m, ballasted)", csv: ls8Raw, sinkCol: "sink_ms_ballast_510kg", ldCol: "LD_ballast" },
+    { id: "is28-2up", name: "IS-28B2 (two-up)", csv: is28Raw, sinkCol: "sink_ms_2up_590kg", ldCol: "LD_2up" },
+    { id: "is28-solo", name: "IS-28B2 (solo)", csv: is28Raw, sinkCol: "sink_ms_solo_480kg", ldCol: "LD_solo" },
   ];
 
   function toRad(d) {
@@ -790,6 +800,7 @@ function initMap() {
       heightUnit: "m",
       qmode: "direct", // "direct" (typed ratio) | "polar" (from a glider polar)
       gliderId: "blanik-l13",
+      degrade: 1, // polar-mode L/D multiplier, 0.5–1.0 (100% = full polar)
       speedMS: 55 * SPEED_UNITS.kt,
       speedUnit: "kt",
       windDir: 0, // degrees, direction the wind blows TO
@@ -834,6 +845,7 @@ function initMap() {
       state.glide.heightUnit = sg.heightUnit || state.glide.heightUnit;
       state.glide.qmode = sg.qmode || state.glide.qmode;
       state.glide.gliderId = sg.gliderId || state.glide.gliderId;
+      if (typeof sg.degrade === "number") state.glide.degrade = Math.max(0.5, Math.min(1, sg.degrade));
       if (typeof sg.speedMS === "number") state.glide.speedMS = sg.speedMS;
       state.glide.speedUnit = sg.speedUnit || state.glide.speedUnit;
       if (typeof sg.windDir === "number") state.glide.windDir = sg.windDir;
@@ -960,6 +972,8 @@ function initMap() {
     $glideGliderSelect = document.getElementById("glide-glider-select"),
     $glidePolarChart = document.getElementById("glide-polar-chart"),
     $glidePolarReadout = document.getElementById("glide-polar-readout"),
+    $glideDegrade = document.getElementById("glide-degrade"),
+    $glideDegradeVal = document.getElementById("glide-degrade-val"),
     $glideSpeed = document.getElementById("glide-speed-input"),
     $glideSpeedUnit = document.getElementById("glide-speed-unit"),
     $glideWindDial = document.getElementById("glide-wind-dial"),
@@ -1035,6 +1049,7 @@ function initMap() {
             heightUnit: state.glide.heightUnit,
             qmode: state.glide.qmode,
             gliderId: state.glide.gliderId,
+            degrade: state.glide.degrade,
             speedMS: state.glide.speedMS,
             speedUnit: state.glide.speedUnit,
             windDir: state.glide.windDir,
@@ -1225,7 +1240,7 @@ function initMap() {
   // the current airspeed (sink → LD). One hook feeds the whole glide pipeline.
   function currentRatio() {
     var g = state.glide;
-    if (g.qmode === "polar") return polarAt(parsePolar(gliderById(g.gliderId)), g.speedMS).ld;
+    if (g.qmode === "polar") return polarAt(parsePolar(gliderById(g.gliderId)), g.speedMS).ld * g.degrade;
     return g.ratio;
   }
   // Still-air, air-relative glide distance (metres).
@@ -1311,6 +1326,8 @@ function initMap() {
     $glideRatio.value = g.ratio;
     populateGliderSelect();
     $glideGliderSelect.value = g.gliderId;
+    $glideDegrade.value = Math.round(g.degrade * 100);
+    $glideDegradeVal.textContent = Math.round(g.degrade * 100) + "%";
     applyQModeUI();
     $glideSpeed.value = Math.round(g.speedMS / SPEED_UNITS[g.speedUnit]);
     $glideSpeedUnit.value = g.speedUnit;
@@ -1347,7 +1364,8 @@ function initMap() {
       row("Altitude", altLine) +
       row(
         "Glide ratio" + (g.qmode === "polar" ? " · polar" : ""),
-        fmt(ratio, ratio < 10 ? 1 : 0) + " : 1"
+        fmt(ratio, ratio < 10 ? 1 : 0) + " : 1" +
+          (g.qmode === "polar" && g.degrade < 1 ? " (" + Math.round(g.degrade * 100) + "% of polar)" : "")
       ) +
       (g.qmode === "polar"
         ? row("Sink @ " + fmt(g.speedMS / SPEED_UNITS[g.speedUnit], 0) + " " + g.speedUnit, fmt(polarAt(parsePolar(gliderById(g.gliderId)), g.speedMS).sink, 2) + " m/s")
@@ -1430,7 +1448,8 @@ function initMap() {
       best = polarBest(pts);
 
     // Literal colours: CSS var() doesn't resolve in SVG presentation attributes.
-    var axisCol = "rgba(0,0,0,0.35)",
+    var axisCol = "rgba(0,0,0,0.35)", // faint axis lines
+      textCol = "#1a1f36", // high-contrast numbers/labels
       curveCol = "#6b7280",
       opCol = "#f59e0b",
       bestCol = "#16a34a";
@@ -1440,8 +1459,8 @@ function initMap() {
     s += '<line x1="' + mL + '" y1="' + mT + '" x2="' + mL + '" y2="' + (mT + ph) + '" stroke="' + axisCol + '" stroke-width="1"/>';
     s += '<line x1="' + mL + '" y1="' + mT + '" x2="' + (mL + pw) + '" y2="' + mT + '" stroke="' + axisCol + '" stroke-width="1"/>';
     // Axis labels.
-    s += '<text x="' + (mL + pw) + '" y="' + (mT + ph + 14) + '" fill="' + axisCol + '" font-size="9" text-anchor="end">km/h</text>';
-    s += '<text x="' + (mL - 4) + '" y="' + (mT + 8) + '" fill="' + axisCol + '" font-size="9" text-anchor="end">m/s</text>';
+    s += '<text x="' + (mL + pw) + '" y="' + (mT + ph + 14) + '" fill="' + textCol + '" font-size="9" font-weight="600" text-anchor="end">km/h</text>';
+    s += '<text x="' + (mL - 4) + '" y="' + (mT + 8) + '" fill="' + textCol + '" font-size="9" font-weight="600" text-anchor="end">m/s</text>';
     // x ticks at rounded speeds within the visible span (step scales with zoom).
     var span = vMax - vMin,
       step = span > 260 ? 50 : span > 120 ? 25 : span > 50 ? 10 : 5;
@@ -1449,7 +1468,7 @@ function initMap() {
       if (v <= vMin) continue;
       var xx = X(v);
       s += '<line x1="' + xx + '" y1="' + mT + '" x2="' + xx + '" y2="' + (mT + 4) + '" stroke="' + axisCol + '" stroke-width="1"/>';
-      s += '<text x="' + xx + '" y="' + (mT + ph + 14) + '" fill="' + axisCol + '" font-size="8.5" text-anchor="middle">' + v + "</text>";
+      s += '<text x="' + xx + '" y="' + (mT + ph + 14) + '" fill="' + textCol + '" font-size="8.5" font-weight="600" text-anchor="middle">' + v + "</text>";
     }
     // Data marks clipped to the plot rect (so pan/zoom don't spill over the axes).
     s += '<g clip-path="url(#pclip)">';
@@ -1463,6 +1482,12 @@ function initMap() {
     // Origin → best-glide (tangent, dashed) and its marker.
     s += '<line x1="' + X(0) + '" y1="' + Y(0) + '" x2="' + X(best.vKmh) + '" y2="' + Y(best.sink) + '" stroke="' + bestCol + '" stroke-width="1.5" stroke-dasharray="3 3"/>';
     s += '<circle cx="' + X(best.vKmh) + '" cy="' + Y(best.sink) + '" r="3.5" fill="none" stroke="' + bestCol + '" stroke-width="1.5"/>';
+    // Degraded "effective glide" ray (steeper: sink ÷ factor), only when degraded.
+    if (g.degrade < 1) {
+      var degSink = op.sink / g.degrade;
+      s += '<line x1="' + X(0) + '" y1="' + Y(0) + '" x2="' + X(opV) + '" y2="' + Y(degSink) + '" stroke="' + opCol + '" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.75"/>';
+      s += '<circle cx="' + X(opV) + '" cy="' + Y(degSink) + '" r="3.5" fill="none" stroke="' + opCol + '" stroke-width="1.5"/>';
+    }
     // Origin → operating point (solid amber) and its marker.
     s += '<line x1="' + X(0) + '" y1="' + Y(0) + '" x2="' + X(opV) + '" y2="' + Y(op.sink) + '" stroke="' + opCol + '" stroke-width="2"/>';
     s += '<circle cx="' + X(opV) + '" cy="' + Y(op.sink) + '" r="4.5" fill="' + opCol + '" stroke="#fff" stroke-width="1.5"/>';
@@ -1479,7 +1504,11 @@ function initMap() {
       fmt(op.sink, 2) +
       " m/s</b>, L/D <b>" +
       fmt(op.ld, op.ld < 10 ? 1 : 0) +
-      "</b>. Best glide " +
+      "</b>" +
+      (g.degrade < 1
+        ? ' → <b>' + fmt(op.ld * g.degrade, op.ld * g.degrade < 10 ? 1 : 0) + "</b> (" + Math.round(g.degrade * 100) + "% of polar)"
+        : "") +
+      ". Best glide " +
       fmt(best.ld, 0) +
       ":1 at " +
       Math.round(best.vKmh) +
@@ -2403,6 +2432,13 @@ function initMap() {
     renderGlide();
     scheduleSave();
   }
+  function onGlideDegrade() {
+    var pct = parseFloat($glideDegrade.value);
+    state.glide.degrade = Math.max(0.5, Math.min(1, (isNaN(pct) ? 100 : pct) / 100));
+    $glideDegradeVal.textContent = Math.round(state.glide.degrade * 100) + "%";
+    renderGlide();
+    scheduleSave();
+  }
   // Convert a client x/y over the chart to data coords (km/h, m/s) via the current
   // view. Returns null if the chart hasn't been laid out yet.
   function polarDataAt(clientX, clientY) {
@@ -2795,6 +2831,7 @@ function initMap() {
     setQMode("polar");
   };
   $glideGliderSelect.addEventListener("change", onGlideGliderChange);
+  $glideDegrade.addEventListener("input", onGlideDegrade);
   initPolarChart();
   $glideSpeed.addEventListener("input", onGlideSpeedInput);
   $glideSpeedUnit.addEventListener("change", onGlideSpeedUnitChange);

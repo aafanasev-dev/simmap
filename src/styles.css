@@ -75,6 +75,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .q-toggle .seg-btn { padding: 6px; font-size: 12px; }
 .polar-chart { margin-top: 8px; border: 1px solid var(--border); border-radius: 10px; background: rgba(0,0,0,0.02); padding: 4px; overflow: hidden; cursor: grab; touch-action: none; }
 .polar-chart:active { cursor: grabbing; }
+#glide-degrade-val { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
 .polar-chart .polar-svg { display: block; }
 input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; margin-top: 10px; }
 
