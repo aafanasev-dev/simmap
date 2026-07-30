@@ -72,7 +72,9 @@ route waypoint.
 ## Runtime external dependencies
 
 The app needs internet at runtime for OpenStreetMap tiles and (if navaids are
-enabled) the OurAirports CSV. Leaflet and PapaParse are bundled from npm, not CDN.
+enabled) the OurAirports CSV. Glider mode, when the altitude datum is set to MSL,
+fetches terrain elevation at the launch point from the Open-Meteo Elevation API
+(`ELEV_URL`, no API key). Leaflet and PapaParse are bundled from npm, not CDN.
 
 ## Deployment
 

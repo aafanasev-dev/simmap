@@ -46,14 +46,14 @@ export default function RadiusRouteMap() {
 
         <div id="panel-body">
           <div id="mode-toggle">
-            <button className="seg-btn active" id="mode-ranges">
+            <button className="seg-btn active" id="mode-glider">
+              Glider
+            </button>
+            <button className="seg-btn" id="mode-ranges">
               Ranges
             </button>
             <button className="seg-btn" id="mode-plan">
               Flight plan
-            </button>
-            <button className="seg-btn" id="mode-glider">
-              Glider
             </button>
           </div>
 
@@ -199,12 +199,14 @@ export default function RadiusRouteMap() {
             </div>
 
             <div id="glide-ground-row" style={{ marginTop: 14, display: "none" }}>
-              <div className="field-label">Ground / target elevation</div>
-              <div className="radius-row">
-                <input type="number" id="glide-ground-input" min="0" step="any" defaultValue="0" />
-                <span className="unit-suffix" id="glide-ground-unit">
-                  m
+              <div className="field-label">Ground elevation · auto from map</div>
+              <div className="ground-readout">
+                <span className="ground-value" id="glide-ground-value">
+                  —
                 </span>
+              </div>
+              <div className="note" id="glide-ground-status" style={{ marginTop: 6 }}>
+                Terrain height at the launch point (source: Open-Meteo).
               </div>
             </div>
 
@@ -213,6 +215,45 @@ export default function RadiusRouteMap() {
               <div className="radius-row">
                 <input type="number" id="glide-ratio-input" min="0" step="any" defaultValue="40" />
                 <span className="unit-suffix">:1</span>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <div className="field-label">Glider speed</div>
+              <div className="radius-row">
+                <input type="number" id="glide-speed-input" min="0" step="any" defaultValue="55" />
+                <select id="glide-speed-unit" defaultValue="kt">
+                  <option value="kt">kt</option>
+                  <option value="km/h">km/h</option>
+                  <option value="mph">mph</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <div className="field-label">Wind</div>
+              <div className="wind-block">
+                <div className="wind-dial" id="glide-wind-dial" title="Drag to set the direction the wind blows toward">
+                  <span className="wind-tick wt-n">N</span>
+                  <span className="wind-tick wt-e">E</span>
+                  <span className="wind-tick wt-s">S</span>
+                  <span className="wind-tick wt-w">W</span>
+                  <span className="wind-needle" id="glide-wind-needle"></span>
+                  <span className="wind-dir-readout" id="glide-wind-dir">
+                    0°
+                  </span>
+                </div>
+                <div className="wind-speed-col">
+                  <div className="field-label">Wind speed · blows toward arrow</div>
+                  <div className="radius-row">
+                    <input type="number" id="glide-wind-speed-input" min="0" step="any" defaultValue="0" />
+                    <select id="glide-wind-speed-unit" defaultValue="kt">
+                      <option value="kt">kt</option>
+                      <option value="km/h">km/h</option>
+                      <option value="mph">mph</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -402,6 +443,7 @@ function initMap() {
     "https://raw.githubusercontent.com/mcantsin/x-plane-navdata/master/earth_fix.dat";
   var MIN_WPT_ZOOM = 7,
     MAX_WPT = 400;
+  var ELEV_URL = "https://api.open-meteo.com/v1/elevation";
 
   function toRad(d) {
     return (d * Math.PI) / 180;
@@ -461,6 +503,17 @@ function initMap() {
       ring.push([lat2d, lng2d]);
     }
     return ring;
+  }
+  // Forward geodesic: point at distM along a true bearing from c. Returns L.latLng.
+  function destPoint(c, brngDeg, distM) {
+    var lat1 = toRad(c.lat),
+      lng1 = toRad(c.lng),
+      d = distM / R,
+      br = toRad(brngDeg);
+    var lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(br));
+    var lng2 =
+      lng1 + Math.atan2(Math.sin(br) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
+    return L.latLng(toDeg(lat2), ((toDeg(lng2) + 540) % 360) - 180);
   }
   function geodesicLine(a, b) {
     var lat1 = toRad(a.lat),
@@ -610,7 +663,7 @@ function initMap() {
 
   // ---- State ----
   var state = {
-    mode: "ranges",
+    mode: "glider",
     unit: "km",
     speedMS: 0,
     speedUnit: "kt",
@@ -636,6 +689,11 @@ function initMap() {
       ratio: 40,
       datum: "AGL",
       heightUnit: "m",
+      speedMS: 55 * SPEED_UNITS.kt,
+      speedUnit: "kt",
+      windDir: 0, // degrees, direction the wind blows TO
+      windMS: 0,
+      windUnit: "kt",
     },
   };
   // Overlay any persisted state before layers/markers are built from it.
@@ -673,6 +731,11 @@ function initMap() {
       if (typeof sg.ratio === "number") state.glide.ratio = sg.ratio;
       state.glide.datum = sg.datum || state.glide.datum;
       state.glide.heightUnit = sg.heightUnit || state.glide.heightUnit;
+      if (typeof sg.speedMS === "number") state.glide.speedMS = sg.speedMS;
+      state.glide.speedUnit = sg.speedUnit || state.glide.speedUnit;
+      if (typeof sg.windDir === "number") state.glide.windDir = sg.windDir;
+      if (typeof sg.windMS === "number") state.glide.windMS = sg.windMS;
+      state.glide.windUnit = sg.windUnit || state.glide.windUnit;
     }
   }
   var navData = [],
@@ -754,6 +817,10 @@ function initMap() {
     state.glide.center = e.target.getLatLng();
     renderGlide();
   });
+  glideMarker.on("dragend", function () {
+    fetchGroundElevation();
+    scheduleSave();
+  });
 
   // ---- DOM ----
   var $input = document.getElementById("radius-input"),
@@ -780,9 +847,16 @@ function initMap() {
     $glideHeightUnit = document.getElementById("glide-height-unit"),
     $glideDatum = document.getElementById("glide-datum"),
     $glideGroundRow = document.getElementById("glide-ground-row"),
-    $glideGround = document.getElementById("glide-ground-input"),
-    $glideGroundUnit = document.getElementById("glide-ground-unit"),
+    $glideGroundValue = document.getElementById("glide-ground-value"),
+    $glideGroundStatus = document.getElementById("glide-ground-status"),
     $glideRatio = document.getElementById("glide-ratio-input"),
+    $glideSpeed = document.getElementById("glide-speed-input"),
+    $glideSpeedUnit = document.getElementById("glide-speed-unit"),
+    $glideWindDial = document.getElementById("glide-wind-dial"),
+    $glideWindNeedle = document.getElementById("glide-wind-needle"),
+    $glideWindDir = document.getElementById("glide-wind-dir"),
+    $glideWindSpeed = document.getElementById("glide-wind-speed-input"),
+    $glideWindSpeedUnit = document.getElementById("glide-wind-speed-unit"),
     $glideStats = document.getElementById("glide-stats");
   var presetWrap = document.getElementById("presets"),
     $navStatus = document.getElementById("nav-status");
@@ -849,6 +923,11 @@ function initMap() {
             ratio: state.glide.ratio,
             datum: state.glide.datum,
             heightUnit: state.glide.heightUnit,
+            speedMS: state.glide.speedMS,
+            speedUnit: state.glide.speedUnit,
+            windDir: state.glide.windDir,
+            windMS: state.glide.windMS,
+            windUnit: state.glide.windUnit,
           },
           layers: { nav: navState.types, apt: aptState.types, wpt: wptState.enabled },
         })
@@ -1030,41 +1109,107 @@ function initMap() {
     var g = state.glide;
     return g.datum === "MSL" ? Math.max(0, g.heightM - g.groundM) : g.heightM;
   }
+  // Still-air, air-relative glide distance (metres).
   function glideDistanceM() {
     return Math.max(0, state.glide.ratio * effGlideHeightM());
   }
+  // Ground centre of the reachable area: still-air circle drifted downwind by
+  // wind_speed × time-aloft. No usable speed/wind ⇒ centred on the launch point.
+  function glideDriftM() {
+    var g = state.glide,
+      R = glideDistanceM();
+    if (!(g.speedMS > 0) || !(g.windMS > 0) || R <= 0) return 0;
+    return g.windMS * (R / g.speedMS);
+  }
+  function glideAreaCenter() {
+    var g = state.glide,
+      drift = glideDriftM();
+    return drift > 0 ? destPoint(g.center, g.windDir, drift) : g.center;
+  }
+
+  // Auto-fill MSL ground elevation from Open-Meteo at the launch point. Debounced;
+  // a monotonic request id makes late responses no-ops. Only runs while in MSL.
+  var elevReqId = 0,
+    elevTimer;
+  function setGroundStatus(msg) {
+    $glideGroundStatus.textContent = msg;
+  }
+  function showGroundValue() {
+    var f = HEIGHT_UNITS[state.glide.heightUnit];
+    $glideGroundValue.textContent = fmt(state.glide.groundM / f, 0) + " " + state.glide.heightUnit;
+  }
+  function fetchGroundElevation() {
+    if (state.glide.datum !== "MSL") return;
+    clearTimeout(elevTimer);
+    elevTimer = setTimeout(function () {
+      var id = ++elevReqId,
+        c = state.glide.center;
+      setGroundStatus("Reading terrain elevation…");
+      fetch(ELEV_URL + "?latitude=" + c.lat.toFixed(5) + "&longitude=" + c.lng.toFixed(5))
+        .then(function (r) {
+          if (!r.ok) throw new Error("http " + r.status);
+          return r.json();
+        })
+        .then(function (d) {
+          if (id !== elevReqId) return; // superseded by a newer request
+          var e = d && d.elevation && d.elevation[0];
+          if (typeof e !== "number") throw new Error("no elevation");
+          state.glide.groundM = e;
+          showGroundValue();
+          setGroundStatus("Terrain at launch point (source: Open-Meteo).");
+          renderGlide();
+          scheduleSave();
+        })
+        .catch(function () {
+          if (id !== elevReqId) return;
+          setGroundStatus("Couldn't read terrain elevation — using " + fmt(state.glide.groundM / HEIGHT_UNITS[state.glide.heightUnit], 0) + " " + state.glide.heightUnit + ".");
+        });
+    }, 400);
+  }
+
   // Push state.glide back into the DOM inputs (used on init after restore).
   function syncGlideInputs() {
     var g = state.glide,
       f = HEIGHT_UNITS[g.heightUnit];
     $glideHeight.value = Math.round(g.heightM / f);
-    $glideGround.value = Math.round(g.groundM / f);
     $glideHeightUnit.value = g.heightUnit;
     $glideDatum.value = g.datum;
-    $glideGroundUnit.textContent = g.heightUnit;
     $glideGroundRow.style.display = g.datum === "MSL" ? "" : "none";
+    showGroundValue();
     $glideRatio.value = g.ratio;
+    $glideSpeed.value = Math.round(g.speedMS / SPEED_UNITS[g.speedUnit]);
+    $glideSpeedUnit.value = g.speedUnit;
+    $glideWindSpeed.value = fmt(g.windMS / SPEED_UNITS[g.windUnit], g.windMS < 5 ? 1 : 0);
+    $glideWindSpeedUnit.value = g.windUnit;
+    setWindNeedle(g.windDir);
+  }
+  function setWindNeedle(deg) {
+    $glideWindNeedle.style.transform = "translate(-50%, -100%) rotate(" + deg + "deg)";
+    $glideWindDir.textContent = Math.round(((deg % 360) + 360) % 360) + "°";
   }
   function renderGlide() {
     var g = state.glide,
       hu = g.heightUnit,
-      distM = glideDistanceM();
+      distM = glideDistanceM(),
+      center = glideAreaCenter(),
+      drift = glideDriftM();
     glideMarker.setLatLng(g.center);
-    glideCircle.setLatLngs(distM > 0 ? geodesicRing(g.center, distM, 256) : []);
+    glideCircle.setLatLngs(distM > 0 ? geodesicRing(center, distM, 256) : []);
 
     var effH = effGlideHeightM(),
       km = distM / 1000,
-      area = capArea(distM) / 1e6;
+      area = capArea(distM) / 1e6,
+      T = g.speedMS > 0 ? distM / g.speedMS : 0;
     var altLine = fmt(g.heightM / HEIGHT_UNITS[hu], 0) + " " + hu + " " + g.datum;
     if (g.datum === "MSL")
       altLine += " (" + fmt(effH / HEIGHT_UNITS[hu], 0) + " " + hu + " above ground)";
 
-    $glideStats.innerHTML =
+    var html =
       row("Launch point", fmtCoord(g.center)) +
       row("Altitude", altLine) +
       row("Glide ratio", fmt(g.ratio, g.ratio < 10 ? 1 : 0) + " : 1") +
       row(
-        "Glide range",
+        "Still-air range",
         distM > 0
           ? fmt(km, km < 100 ? 1 : 0) +
               " km · " +
@@ -1074,8 +1219,21 @@ function initMap() {
               " nmi"
           : "—"
       ) +
-      row("Diameter", fmt(km * 2, km < 100 ? 1 : 0) + " km") +
-      row("Cap area", fmt(area, 0) + " km²");
+      (g.speedMS > 0 ? row("Time aloft", fmtTime(T)) : "");
+
+    if (g.windMS > 0 && distM > 0) {
+      var down = km + drift / 1000,
+        up = km - drift / 1000;
+      html +=
+        row("Wind", fmt(g.windMS / SPEED_UNITS[g.windUnit], g.windMS < 5 ? 1 : 0) + " " + g.windUnit + " → " + Math.round(g.windDir) + "°") +
+        row("Downwind reach", fmt(down, down < 100 ? 1 : 0) + " km") +
+        row(
+          "Upwind reach",
+          up > 0 ? fmt(up, up < 100 ? 1 : 0) + " km" : "drifts away — can't hold upwind"
+        );
+    }
+    html += row("Diameter", fmt(km * 2, km < 100 ? 1 : 0) + " km") + row("Cap area", fmt(area, 0) + " km²");
+    $glideStats.innerHTML = html;
   }
 
   function renderRanges() {
@@ -1961,24 +2119,17 @@ function initMap() {
     scheduleSave();
   }
   function onGlideHeightUnitChange() {
-    // Preserve the stored metres; just re-express the inputs in the new unit.
+    // Preserve the stored metres; just re-express the display in the new unit.
     state.glide.heightUnit = $glideHeightUnit.value;
-    var f = HEIGHT_UNITS[state.glide.heightUnit];
-    $glideHeight.value = Math.round(state.glide.heightM / f);
-    $glideGround.value = Math.round(state.glide.groundM / f);
-    $glideGroundUnit.textContent = state.glide.heightUnit;
+    $glideHeight.value = Math.round(state.glide.heightM / HEIGHT_UNITS[state.glide.heightUnit]);
+    showGroundValue();
     renderGlide();
     scheduleSave();
   }
   function onGlideDatumChange() {
     state.glide.datum = $glideDatum.value;
     $glideGroundRow.style.display = state.glide.datum === "MSL" ? "" : "none";
-    renderGlide();
-    scheduleSave();
-  }
-  function onGlideGroundInput() {
-    var v = parseFloat($glideGround.value);
-    state.glide.groundM = !isNaN(v) && v > 0 ? v * HEIGHT_UNITS[state.glide.heightUnit] : 0;
+    if (state.glide.datum === "MSL") fetchGroundElevation();
     renderGlide();
     scheduleSave();
   }
@@ -1987,6 +2138,64 @@ function initMap() {
     state.glide.ratio = !isNaN(v) && v > 0 ? v : 0;
     renderGlide();
     scheduleSave();
+  }
+  function onGlideSpeedInput() {
+    var v = parseFloat($glideSpeed.value);
+    state.glide.speedMS = !isNaN(v) && v > 0 ? v * SPEED_UNITS[state.glide.speedUnit] : 0;
+    renderGlide();
+    scheduleSave();
+  }
+  function onGlideSpeedUnitChange() {
+    state.glide.speedUnit = $glideSpeedUnit.value;
+    $glideSpeed.value = Math.round(state.glide.speedMS / SPEED_UNITS[state.glide.speedUnit]);
+    scheduleSave();
+  }
+  function onGlideWindSpeedInput() {
+    var v = parseFloat($glideWindSpeed.value);
+    state.glide.windMS = !isNaN(v) && v > 0 ? v * SPEED_UNITS[state.glide.windUnit] : 0;
+    renderGlide();
+    scheduleSave();
+  }
+  function onGlideWindSpeedUnitChange() {
+    state.glide.windUnit = $glideWindSpeedUnit.value;
+    $glideWindSpeed.value = fmt(state.glide.windMS / SPEED_UNITS[state.glide.windUnit], state.glide.windMS < 5 ? 1 : 0);
+    scheduleSave();
+  }
+  // Draggable compass dial for wind direction (bearing the wind blows TO). North
+  // up; bearing = atan2(dx, -dy) from the dial centre. Pointer capture keeps
+  // tracking off-dial, same idiom as the draggable panels.
+  function initWindDial() {
+    var dragging = false;
+    function apply(e) {
+      var r = $glideWindDial.getBoundingClientRect(),
+        dx = e.clientX - (r.left + r.width / 2),
+        dy = e.clientY - (r.top + r.height / 2);
+      var b = (toDeg(Math.atan2(dx, -dy)) + 360) % 360;
+      state.glide.windDir = b;
+      setWindNeedle(b);
+      renderGlide();
+    }
+    $glideWindDial.addEventListener("pointerdown", function (e) {
+      dragging = true;
+      try {
+        $glideWindDial.setPointerCapture(e.pointerId);
+      } catch (_) {}
+      apply(e);
+      e.preventDefault();
+    });
+    $glideWindDial.addEventListener("pointermove", function (e) {
+      if (dragging) apply(e);
+    });
+    function end(e) {
+      if (!dragging) return;
+      dragging = false;
+      try {
+        $glideWindDial.releasePointerCapture(e.pointerId);
+      } catch (_) {}
+      scheduleSave();
+    }
+    $glideWindDial.addEventListener("pointerup", end);
+    $glideWindDial.addEventListener("pointercancel", end);
   }
   // Ranges-mode control: re-read inputs and redraw on any change.
   function onRangesInput() {
@@ -2220,8 +2429,12 @@ function initMap() {
   $glideHeight.addEventListener("input", onGlideHeightInput);
   $glideHeightUnit.addEventListener("change", onGlideHeightUnitChange);
   $glideDatum.addEventListener("change", onGlideDatumChange);
-  $glideGround.addEventListener("input", onGlideGroundInput);
   $glideRatio.addEventListener("input", onGlideRatioInput);
+  $glideSpeed.addEventListener("input", onGlideSpeedInput);
+  $glideSpeedUnit.addEventListener("change", onGlideSpeedUnitChange);
+  $glideWindSpeed.addEventListener("input", onGlideWindSpeedInput);
+  $glideWindSpeedUnit.addEventListener("change", onGlideWindSpeedUnitChange);
+  initWindDial();
 
   document.getElementById("undo-btn").onclick = onUndo;
   document.getElementById("clear-btn").onclick = onClear;
@@ -2392,6 +2605,7 @@ function initMap() {
     } else if (state.mode === "glider") {
       state.glide.center = e.latlng;
       renderGlide();
+      fetchGroundElevation();
       scheduleSave();
     } else tryAddRoutePoint(e.latlng);
   });
@@ -2470,6 +2684,7 @@ function initMap() {
   syncRangesInputs();
   syncGlideInputs();
   setMode(state.mode);
+  if (state.glide.datum === "MSL") fetchGroundElevation();
   // Dragging is always wired (onDown no-ops in mobile); the responsive layout is
   // (re)applied at load and whenever the viewport crosses the 640px breakpoint.
   var disposeDragPanel = makeDraggable(panel, document.getElementById("panel-header"), "simmap.pos.panel");
@@ -2488,6 +2703,7 @@ function initMap() {
     clearTimeout(sizeTimer);
     clearTimeout(toastTimer);
     clearTimeout(saveTimer);
+    clearTimeout(elevTimer);
     mql.removeEventListener("change", onMqlChange);
     disposeDragPanel();
     disposeDragLayers();

@@ -52,6 +52,22 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 #airport-input { letter-spacing: 1px; font-weight: 600; }
 .radius-row select { padding: 9px 8px; font-size: 14px; border: 1px solid var(--border); border-radius: 10px; background: #fff; color: var(--text); cursor: pointer; outline: none; }
 .unit-suffix { display: flex; align-items: center; padding: 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); }
+
+/* Glider: auto ground-elevation readout */
+.ground-readout { padding: 9px 11px; font-size: 14px; font-weight: 600; border: 1px solid var(--border); border-radius: 10px; background: rgba(0,0,0,0.025); color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* Glider: wind-direction dial + speed */
+.wind-block { display: flex; gap: 12px; align-items: center; }
+.wind-speed-col { flex: 1; min-width: 0; }
+.wind-dial { position: relative; width: 92px; height: 92px; flex-shrink: 0; border-radius: 50%; border: 1px solid var(--border); background: radial-gradient(circle at 50% 50%, #fff 0%, rgba(0,0,0,0.03) 100%); cursor: grab; touch-action: none; user-select: none; }
+.wind-dial:active { cursor: grabbing; }
+.wind-tick { position: absolute; font-size: 9px; font-weight: 700; color: var(--muted); transform: translate(-50%, -50%); }
+.wind-tick.wt-n { left: 50%; top: 9px; }
+.wind-tick.wt-s { left: 50%; top: calc(100% - 9px); }
+.wind-tick.wt-e { left: calc(100% - 9px); top: 50%; }
+.wind-tick.wt-w { left: 9px; top: 50%; }
+.wind-needle { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-origin: 50% 100%; transform: translate(-50%, -100%) rotate(0deg); border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 34px solid #f59e0b; pointer-events: none; }
+.wind-dir-readout { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 11px; font-weight: 700; color: var(--text); background: #fff; border-radius: 6px; padding: 1px 4px; font-variant-numeric: tabular-nums; pointer-events: none; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
 input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; margin-top: 10px; }
 
 /* Ranges-mode regime inputs & colour swatches */
